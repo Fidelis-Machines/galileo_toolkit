@@ -66,8 +66,8 @@ impl IpAddrCategoryHistogram {
         proto: &str,
     ) -> Result<(), Error> {
         println!(
-            "HBOS: serializing [{}/{}/{}/{}]...",
-            observe, vlan, proto, self.name
+            "{}: serializing [{}/{}/{}/{}]...",
+            self.name, observe, vlan, proto, self.name
         );
         for (hash_bin, value) in &self.map {
             appender
@@ -76,58 +76,26 @@ impl IpAddrCategoryHistogram {
                     Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e))
                 })?;
         }
-
         Ok(())
     }
     fn get_key(&mut self, ipaddr: &String) -> u64 {
-        let modulus = 65536;
         let mut key: u64 = 0;
+        let modulus = 8192; // Up to 8192 categories (network prefixes)
         let ip_address = IpAddr::from_str(ipaddr).expect("invalid ip address");
 
+        // shift right 8 bits to remove the last octet for IPv4 and IPV6
+        // essentially grouping by /24 for IPv4 and /120 for IPv6
+        // then apply modulus to get the category
         match ip_address {
-            IpAddr::V4(ipv4) => match ipv4.octets()[0] {
-                0..=127 => {
-                    let mut ip_octets = ipv4.octets();
-                    ip_octets[1] = 0;
-                    ip_octets[2] = 0;
-                    ip_octets[3] = 0;
-                    let index: u64 = LittleEndian::read_u32(&ip_octets) as u64;
-                    key = index.rem_euclid(modulus);
-                }
-                128..=191 => {
-                    let mut ip_octets = ipv4.octets();
-                    ip_octets[2] = 0;
-                    ip_octets[3] = 0;
-                    let index: u64 = LittleEndian::read_u32(&ip_octets) as u64;
-                    key = index.rem_euclid(modulus);
-                }
-                192..=223 => {
-                    let mut ip_octets = ipv4.octets();
-                    ip_octets[3] = 0;
-                    let index: u64 = LittleEndian::read_u32(&ip_octets) as u64;
-                    key = index.rem_euclid(modulus);
-                }
-                224..=239 => {
-                    let mut ip_octets = ipv4.octets();
-                    ip_octets[3] = 0;
-                    let index: u64 = LittleEndian::read_u32(&ip_octets) as u64;
-                    key = index.rem_euclid(modulus);
-                }
-                240..=255 => {
-                    let ip_octets = ipv4.octets();
-                    let index: u64 = LittleEndian::read_u32(&ip_octets) as u64;
-                    key = index.rem_euclid(modulus);
-                    //println!("Class D: {} => {} {}", ipv4, index, key)
-                }
-            },
+            IpAddr::V4(ipv4) => {
+                let shifted = u32::from(ipv4) >> 8;
+                key = shifted.rem_euclid(modulus) as u64;
+            }
             IpAddr::V6(ipv6) => {
-                let ip_octets = ipv6.octets();
-                let index = LittleEndian::read_u128(&ip_octets);
-                key = index.rem_euclid(modulus as u128) as u64;
-                //println!("IPv6 address, no class assigned: {}", ip_address);
+                let shifted = u128::from(ipv6) >> 8;
+                key = shifted.rem_euclid(modulus as u128) as u64;
             }
         }
-
         key
     }
     fn add(&mut self, ipaddr: &String) {

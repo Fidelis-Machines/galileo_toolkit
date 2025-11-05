@@ -631,7 +631,7 @@ impl FileProcessor for RuleProcessor {
         self.print_trigger_count(&mut db_in)?;
 
         let sql_command = format!(
-            "COPY flow TO '{}' (FORMAT 'parquet', CODEC 'snappy', ROW_GROUP_SIZE 100_000);",
+            "COPY flow TO '{}' (FORMAT 'parquet');",
             tmp_parquet_filename
         );
         db_in

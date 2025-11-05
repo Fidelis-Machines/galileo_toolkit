@@ -163,6 +163,8 @@ pub static MD_FLOW_TABLE: &str = "CREATE TABLE IF NOT EXISTS flow (
     dmac VARCHAR,
     scountry VARCHAR,
     dcountry VARCHAR,
+    scity VARCHAR,
+    dcity VARCHAR,
     sasn UINTEGER,
     dasn UINTEGER,
     sasnorg VARCHAR,

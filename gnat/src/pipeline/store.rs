@@ -80,12 +80,11 @@ impl StoreProcessor {
                 return Err(Error::other("unsupported filter type"));
             }
         }
-
-        let mut db_conn = duckdb_open_memory(1)
+        let mut db_conn = duckdb_open_memory(2)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
         if storage_type == StorageType::MOTHERDUCK {
             if use_motherduck(output).expect("motherduck env") {
-                db_conn = duckdb_open(output, 1).map_err(|e| {
+                db_conn = duckdb_open(output, 2).map_err(|e| {
                     Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e))
                 })?;
                 let _ = db_conn.execute_batch(MD_FLOW_TABLE).map_err(|e| {
@@ -96,6 +95,7 @@ impl StoreProcessor {
                 return Err(Error::other("motherduck is not enabled"));
             }
         } else if storage_type == StorageType::S3 {
+
             let s3_endpoint = env::var("S3_ENDPOINT")
                 .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("S3 error: {}", e)))?;
             let s3_access_key_id = env::var("S3_ACCESS_KEY_ID")
@@ -123,7 +123,7 @@ impl StoreProcessor {
             })?;
         } else {
             // For local storage, we can use an in-memory connection
-            println!("{}: using local storage", command);
+            println!("{}: using to local storage", command);
         }
         let mut input_list = Vec::<String>::new();
         input_list.push(input.to_string());
@@ -303,7 +303,7 @@ impl StoreProcessor {
                 let sql_s3_copy = format!(
                     "COPY (SELECT *, year(stime) AS year, month(stime) AS month, day(stime) as day FROM flow
                      WHERE year = {} AND month = {} AND day = {}) 
-                     TO '{}/year={}/month={}/day={}/{}{:02}{:02}-{}.parquet' (FORMAT 'parquet', CODEC 'zstd', ROW_GROUP_SIZE 100_000);",  
+                     TO '{}/year={}/month={}/day={}/{}{:02}{:02}-{}.parquet' (FORMAT 'parquet');",  
                     dtg.year, dtg.month, dtg.day,
                     self.output_list[0],
                     dtg.year, dtg.month, dtg.day,
@@ -356,7 +356,7 @@ impl StoreProcessor {
                 let sql_s3_copy = format!(
                     "COPY (SELECT *, year(stime) AS year, month(stime) AS month, day(stime) as day FROM flow 
                         WHERE year = {} AND month = {} AND day = {}) 
-                        TO '{}/year={}/month={}/day={}/{}{:02}{:02}-{}.parquet' (FORMAT 'parquet', CODEC 'zstd', ROW_GROUP_SIZE 100_000);",
+                        TO '{}/year={}/month={}/day={}/{}{:02}{:02}-{}.parquet' (FORMAT 'parquet');",
                     dtg.year, dtg.month, dtg.day, 
                     self.output_list[0],
                     dtg.year, dtg.month, dtg.day, 
@@ -376,7 +376,7 @@ impl StoreProcessor {
     }
     fn local_storage(&mut self, file_list: &Vec<String>) -> Result<(), Error> {
         println!(
-            "{}: using to local partitioned storage {}",
+            "{}: local partitioned storage = {}",
             self.command, self.output_list[0]
         );
         // Use iterator and join for file list formatting
@@ -390,14 +390,14 @@ impl StoreProcessor {
         let mut sql_command = String::new();
         if self.filter.is_empty() {
             sql_command = format!(
-                "COPY (SELECT *, year(stime) AS year, month(stime) AS month, day(stime) as day, hour(stime) as hour FROM read_parquet({})) 
-                    TO '{}' (FORMAT 'parquet', CODEC 'snappy', ROW_GROUP_SIZE 100_000, PARTITION_BY(year, month, day, hour), APPEND, FILENAME_PATTERN 'gnat-{{uuid}}');",
+                "COPY (SELECT *, year(stime) AS year, month(stime) AS month, day(stime) as day FROM read_parquet({})) 
+                    TO '{}' (FORMAT 'parquet', PARTITION_BY(year, month, day), APPEND TRUE, FILENAME_PATTERN 'gnat-{{uuid}}');",
                 parquet_list, self.output_list[0]
             );
         } else {
             sql_command = format!(
-                "COPY (SELECT *, year(stime) AS year, month(stime) AS month, day(stime) as day, hour(stime) as hour  FROM read_parquet({}) WHERE {}) 
-                    TO '{}' (FORMAT 'parquet', CODEC 'snappy', ROW_GROUP_SIZE 100_000, PARTITION_BY(year, month, day, hour), APPEND, FILENAME_PATTERN 'gnat-{{uuid}}');",
+                "COPY (SELECT *, year(stime) AS year, month(stime) AS month, day(stime) as day FROM read_parquet({}) WHERE {}) 
+                    TO '{}' (FORMAT 'parquet', PARTITION_BY(year, month, day), APPEND TRUE, FILENAME_PATTERN 'gnat-{{uuid}}');",
                 parquet_list, self.filter, self.output_list[0]
             );
         }
@@ -406,6 +406,7 @@ impl StoreProcessor {
             .execute_batch(&sql_command)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
 
+        println!("{}: done.", self.command);
         Ok(())
     }
 }

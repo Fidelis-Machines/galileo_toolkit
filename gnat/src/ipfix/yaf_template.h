@@ -320,6 +320,7 @@ static fbInfoElementSpec_t g_yaf_flow_spec[] = {
 };
 
 
+#if defined(COMMENT_OUT)
 // for future use
 static fbInfoElementSpec_t yaf_process_stats_spec[] = {
     { "observationDomainId",                4, 0 },
@@ -341,7 +342,6 @@ static fbInfoElementSpec_t yaf_process_stats_spec[] = {
     FB_IESPEC_NULL
 };
 
-#if defined(COMMENT_OUT)
 
 typedef struct yfConfig_st {
     char              *inspec;

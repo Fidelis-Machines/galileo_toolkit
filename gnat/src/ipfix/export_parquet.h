@@ -44,7 +44,8 @@
     "smaxpktsize USMALLINT,dmaxpktsize USMALLINT,"                                              \
     "sstdevpayload USMALLINT,dstdevpayload USMALLINT,"                                          \
     "spd VARCHAR,reason VARCHAR,smac VARCHAR,dmac VARCHAR,"                                     \
-    "scountry VARCHAR,dcountry VARCHAR,sasn UINTEGER,dasn UINTEGER,"                            \
+    "scountry VARCHAR,dcountry VARCHAR,scity VARCHAR,dcity VARCHAR,"                            \
+    "sasn UINTEGER,dasn UINTEGER,"                                                              \
     "sasnorg VARCHAR,dasnorg VARCHAR,orient VARCHAR,tag VARCHAR[],"                             \
     "hbos_score DOUBLE,hbos_severity UTINYINT,hbos_map MAP(VARCHAR, FLOAT),"                    \
     "ndpi_appid VARCHAR,ndpi_category VARCHAR,ndpi_risk_bits UBIGINT,ndpi_risk_score UINTEGER," \
@@ -62,7 +63,7 @@ OpenFileSink(
     GError **err);
 
 gboolean
-CloseFileSink(
+CloseFileSink(  
     MIOSource *source,
     MIOSink *sink,
     void *vctx,

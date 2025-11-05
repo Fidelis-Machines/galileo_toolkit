@@ -204,7 +204,7 @@ impl FileProcessor for SplitProcessor {
                     split.path, self.command, safe_rfc3339, split.proto
                 );
                 let sql = format!(
-                    "COPY (SELECT * FROM flow WHERE proto='{}') TO '{}' (FORMAT 'parquet', CODEC 'snappy', ROW_GROUP_SIZE 100_000);",
+                    "COPY (SELECT * FROM flow WHERE proto='{}') TO '{}' (FORMAT 'parquet');",
                     split.proto, tmp_filename
                 );
 

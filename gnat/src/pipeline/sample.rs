@@ -133,7 +133,7 @@ impl SampleProcessor {
         let sql_command = format!(
             "COPY (SELECT * FROM read_parquet({})
                    WHERE date_trunc('day',stime) > date_add(current_date, - INTERVAL {} DAY))
-                TO '{}' (FORMAT 'parquet', CODEC 'snappy', ROW_GROUP_SIZE 100_000);",
+                TO '{}' (FORMAT 'parquet');",
             parquet_list, self.retention, tmp_filename
         );
 
@@ -271,7 +271,7 @@ impl SampleProcessor {
                    AND dvlan = {} AND proto='{}' AND hbos_severity < 4 
                    AND date_trunc('day',stime) > date_add(current_date, - INTERVAL {} DAY)
                  USING SAMPLE {}%)
-                 TO '{}' (FORMAT 'parquet', CODEC 'snappy', ROW_GROUP_SIZE 100_000);",
+                 TO '{}' (FORMAT 'parquet');",
                 record.observe, record.vlan, record.proto, self.retention, self.percent, tmp_filename
             );
             conn.execute_batch(&sql_command).map_err(|e| {

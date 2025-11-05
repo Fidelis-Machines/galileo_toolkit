@@ -257,19 +257,21 @@ impl HistogramModels {
                     dmac: row.get(46).expect("missing value"),
                     scountry: row.get(47).expect("missing value"),
                     dcountry: row.get(48).expect("missing value"),
-                    sasn: row.get(49).expect("missing value"),
-                    dasn: row.get(50).expect("missing value"),
-                    sasnorg: row.get(51).expect("missing value"),
-                    dasnorg: row.get(52).expect("missing value"),
-                    orient: row.get(53).expect("missing value"),
-                    hbos_score: row.get(54).expect("missing value"),
-                    hbos_severity: row.get(55).expect("missing value"),
-                    appid: row.get(56).expect("missing value"),
-                    category: row.get(57).unwrap_or("".to_string()),
-                    risk_bits: row.get(58).expect("missing value"),
-                    risk_score: row.get(59).expect("missing value"),
-                    risk_severity: row.get(60).expect("missing value"),
-                    trigger: row.get(61).expect("missing value"),
+                    scity: row.get(49).expect("missing value"),
+                    dcity: row.get(50).expect("missing value"),
+                    sasn: row.get(51).expect("missing value"),
+                    dasn: row.get(52).expect("missing value"),
+                    sasnorg: row.get(53).expect("missing value"),
+                    dasnorg: row.get(54).expect("missing value"),
+                    orient: row.get(55).expect("missing value"),
+                    hbos_score: row.get(56).expect("missing value"),
+                    hbos_severity: row.get(57).expect("missing value"),
+                    appid: row.get(58).expect("missing value"),
+                    category: row.get(59).unwrap_or("".to_string()),
+                    risk_bits: row.get(60).expect("missing value"),
+                    risk_score: row.get(61).expect("missing value"),
+                    risk_severity: row.get(62).expect("missing value"),
+                    trigger: row.get(63).expect("missing value"),
                 })
             })
             .expect("query map failed");
@@ -452,19 +454,21 @@ impl HistogramModels {
                     dmac: row.get(46).expect("missing value"),
                     scountry: row.get(47).expect("missing value"),
                     dcountry: row.get(48).expect("missing value"),
-                    sasn: row.get(49).expect("missing value"),
-                    dasn: row.get(50).expect("missing value"),
-                    sasnorg: row.get(51).expect("missing value"),
-                    dasnorg: row.get(52).expect("missing value"),
-                    orient: row.get(53).expect("missing value"),
-                    hbos_score: row.get(54).expect("missing value"),
-                    hbos_severity: row.get(55).expect("missing value"),
-                    appid: row.get(56).expect("missing value"),
-                    category: row.get(57).unwrap_or("".to_string()),
-                    risk_bits: row.get(58).expect("missing value"),
-                    risk_score: row.get(59).expect("missing value"),
-                    risk_severity: row.get(60).expect("missing value"),
-                    trigger: row.get(61).expect("missing value"),
+                    scity: row.get(49).expect("missing value"),
+                    dcity: row.get(50).expect("missing value"),
+                    sasn: row.get(51).expect("missing value"),
+                    dasn: row.get(52).expect("missing value"),
+                    sasnorg: row.get(53).expect("missing value"),
+                    dasnorg: row.get(54).expect("missing value"),
+                    orient: row.get(55).expect("missing value"),
+                    hbos_score: row.get(56).expect("missing value"),
+                    hbos_severity: row.get(57).expect("missing value"),
+                    appid: row.get(58).expect("missing value"),
+                    category: row.get(59).unwrap_or("".to_string()),
+                    risk_bits: row.get(60).expect("missing value"),
+                    risk_score: row.get(61).expect("missing value"),
+                    risk_severity: row.get(62).expect("missing value"),
+                    trigger: row.get(63).expect("missing value"),
                 })
             })
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
@@ -745,19 +749,21 @@ impl HistogramModels {
                     dmac: row.get(45).expect("missing value"),
                     scountry: row.get(46).expect("missing value"),
                     dcountry: row.get(47).expect("missing value"),
-                    sasn: row.get(48).expect("missing value"),
-                    dasn: row.get(49).expect("missing value"),
-                    sasnorg: row.get(50).expect("missing value"),
-                    dasnorg: row.get(51).expect("missing value"),
-                    orient: row.get(52).expect("missing value"),
-                    hbos_score: row.get(53).expect("missing value"),
-                    hbos_severity: row.get(54).expect("missing value"),
-                    appid: row.get(55).expect("missing value"),
-                    category: row.get(56).unwrap_or("".to_string()),
-                    risk_bits: row.get(57).expect("missing value"),
-                    risk_score: row.get(58).expect("missing value"),
-                    risk_severity: row.get(59).expect("missing value"),
-                    trigger: row.get(60).expect("missing value"),
+                    scity: row.get(48).expect("missing value"),
+                    dcity: row.get(49).expect("missing value"),
+                    sasn: row.get(50).expect("missing value"),
+                    dasn: row.get(51).expect("missing value"),
+                    sasnorg: row.get(52).expect("missing value"),
+                    dasnorg: row.get(53).expect("missing value"),
+                    orient: row.get(54).expect("missing value"),
+                    hbos_score: row.get(55).expect("missing value"),
+                    hbos_severity: row.get(56).expect("missing value"),
+                    appid: row.get(57).expect("missing value"),
+                    category: row.get(58).unwrap_or("".to_string()),
+                    risk_bits: row.get(59).expect("missing value"),
+                    risk_score: row.get(61).expect("missing value"),
+                    risk_severity: row.get(62).expect("missing value"),
+                    trigger: row.get(63).expect("missing value"),
                 })
             })
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
@@ -1113,6 +1119,16 @@ impl HistogramModels {
                     histogram.build(&conn, &self.observe, self.vlan, &self.proto)?;
                     self.string_category.insert(feature.to_string(), histogram);
                 }
+                "scity" => {
+                    let mut histogram = StringCategoryHistogram::new(feature);
+                    histogram.build(&conn, &self.observe, self.vlan, &self.proto)?;
+                    self.string_category.insert(feature.to_string(), histogram);
+                }
+                "dcity" => {
+                    let mut histogram = StringCategoryHistogram::new(feature);
+                    histogram.build(&conn, &self.observe, self.vlan, &self.proto)?;
+                    self.string_category.insert(feature.to_string(), histogram);
+                }                
                 "spd" => {
                     let mut histogram = StringCategoryHistogram::new(feature);
                     histogram.build(&conn, &self.observe, self.vlan, &self.proto)?;

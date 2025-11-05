@@ -21,6 +21,7 @@ extern "C" {
         output_file: *const c_char,
         asn_file: *const c_char,
         country_file: *const c_char,
+        city_file: *const c_char,   
     ) -> i32;
 
     fn libfixbuf_socket_import(
@@ -38,6 +39,7 @@ extern "C" {
         output_spec: *const c_char,
         asn_file: *const c_char,
         country_file: *const c_char,
+        city_file: *const c_char,
     ) -> i32;
 }
 
@@ -48,11 +50,13 @@ pub fn unsafe_ipfix_file_import(
     observation: &str,
     asn: &str,
     country: &str,
+    city: &str,
 ) -> i32 {
     let c_command = CString::new(command).expect("converting to c_string");
     let c_observation = CString::new(observation).expect("converting to c_string");
     let c_asn_file = CString::new(asn).expect("converting to c_string");
     let c_country_file = CString::new(country).expect("converting to c_string");
+    let c_city_file = CString::new(city).expect("converting to c_string");
     let c_input_file = CString::new(input_file).expect("converting to c_string");
     let c_output_dir = CString::new(output_dir).expect("converting to c_string");
 
@@ -64,6 +68,7 @@ pub fn unsafe_ipfix_file_import(
             c_output_dir.as_c_str().as_ptr(),
             c_asn_file.as_c_str().as_ptr(),
             c_country_file.as_c_str().as_ptr(),
+            c_city_file.as_c_str().as_ptr(),
         )
     }
 }
@@ -83,6 +88,7 @@ pub fn unsafe_ifpix_socket_import(
     output_spec: &str,
     asn_spec: &str,
     country_spec: &str,
+    city_spec: &str,
 ) -> i32 {
     let c_command = CString::new(command).expect("converting to c_string");
     let c_observation = CString::new(observation_tag).expect("converting to c_string");
@@ -96,6 +102,7 @@ pub fn unsafe_ifpix_socket_import(
     let c_output_spec = CString::new(output_spec).expect("converting to c_string");
     let c_asn_spec = CString::new(asn_spec).expect("converting to c_string");
     let c_country_spec = CString::new(country_spec).expect("converting to c_string");
+    let c_city_spec = CString::new(city_spec).expect("converting to c_string");
 
     let mut verbose: u32 = 0;
     if verbose_mode {
@@ -118,6 +125,7 @@ pub fn unsafe_ifpix_socket_import(
             c_output_spec.as_c_str().as_ptr(),
             c_asn_spec.as_c_str().as_ptr(),
             c_country_spec.as_c_str().as_ptr(),
+            c_city_spec.as_c_str().as_ptr(),
         )
     }
 }

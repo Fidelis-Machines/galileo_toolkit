@@ -37,10 +37,13 @@ typedef struct gnatContext_st
     MMDB_s *asn_mmdb_ptr;
     MMDB_s country_mmdb;
     MMDB_s *country_mmdb_ptr;
+    MMDB_s city_mmdb;
+    MMDB_s *city_mmdb_ptr;
     char *input_file;
     char *observation;
     char *asn_file;
     char *country_file;
+    char *city_file;
     char *output_dir;
     uint16_t risk_threshold;
 } GNAT_CONTEXT;

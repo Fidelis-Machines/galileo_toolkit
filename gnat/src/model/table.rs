@@ -314,6 +314,8 @@ pub struct MemFlowRecord {
     pub dmac: String,
     pub scountry: String,
     pub dcountry: String,
+    pub scity: String,
+    pub dcity: String,    
     pub sasn: u32,
     pub dasn: u32,
     pub sasnorg: String,

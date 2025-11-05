@@ -36,8 +36,9 @@ RUN ldconfig
 # Stage 2
 # ---------------------------------------------------------------
 #FROM bitnami/minideb:bookworm AS runner
-FROM bitnami/minideb:latest AS runner
+##FROM bitnami/minideb:latest AS runner
 
+FROM linuxcontainers/debian-slim:latest AS runner
 RUN --mount=type=cache,target=/var/cache/apt \
 	apt-get update \
     && apt-get install -yqq --no-install-recommends ca-certificates \

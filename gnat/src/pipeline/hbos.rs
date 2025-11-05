@@ -419,7 +419,7 @@ impl FileProcessor for HbosProcessor {
         // Export the flow table to parquet
         //
         let sql_export_command = format!(
-            "COPY (SELECT * FROM flow) TO '{}' (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 100_000);",
+            "COPY (SELECT * FROM flow) TO '{}' (FORMAT parquet);",
             tmp_filename
             );
         db_conn

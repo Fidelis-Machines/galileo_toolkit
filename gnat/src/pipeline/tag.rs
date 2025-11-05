@@ -187,7 +187,7 @@ impl TagProcessor {
             self.output_list[0], self.command, safe_rfc3339
         );
         let sql_command = format!(
-            "COPY (SELECT * FROM flow) TO '{}' (FORMAT 'parquet', CODEC 'snappy', ROW_GROUP_SIZE 100_000);",
+            "COPY (SELECT * FROM flow) TO '{}' (FORMAT 'parquet');",
             tmp_filename
         );
         conn.execute_batch(&sql_command).expect("sql batch");

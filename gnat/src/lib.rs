@@ -15,7 +15,6 @@ pub mod utils {
 }
 
 pub mod model {
-    pub mod binning;
     pub mod histogram;
     pub mod table;
 }
@@ -263,7 +262,7 @@ pub mod pipeline {
                 })?;
 
                 match db_conn.execute(
-                    "COPY flow TO '?' (FORMAT parquet, CODEC 'snappy', ROW_GROUP_SIZE 100_000);",
+                    "COPY flow TO '?' (FORMAT parquet);",
                     params![tmp_file],
                 ) {
                     Ok(count) => {
@@ -381,7 +380,7 @@ pub mod pipeline {
                         format!("{}/.gnat-{}-{}.parquet", output, command, safe_rfc3339);
                     let final_filename =
                         format!("{}/gnat-{}-{}.parquet", output, command, safe_rfc3339);
-                    let sql = format!("COPY flow TO '{}' (FORMAT 'parquet', CODEC 'snappy', ROW_GROUP_SIZE 100_000);", tmp_filename);
+                    let sql = format!("COPY flow TO '{}' (FORMAT 'parquet');", tmp_filename);
                     db_out.execute_batch(&sql).map_err(|e| {
                         Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e))
                     })?;

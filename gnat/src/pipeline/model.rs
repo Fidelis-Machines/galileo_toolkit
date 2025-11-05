@@ -14,19 +14,19 @@ use crate::model::histogram::string_category::StringCategoryHistogram;
 use crate::model::histogram::time_category::TimeCategoryHistogram;
 use crate::model::histogram::MINIMUM_DAYS;
 
-use crate::pipeline::check_parquet_stream;
-use crate::pipeline::load_environment;
-use crate::pipeline::use_motherduck;
-use crate::pipeline::StreamType;
-
 use crate::model::histogram::PARQUET_DISTINCT_OBSERVATIONS;
 use crate::model::table::DistinctObservation;
+use crate::pipeline::check_parquet_stream;
+use crate::pipeline::load_environment;
 use crate::pipeline::parse_interval;
 use crate::pipeline::parse_options;
+use crate::pipeline::use_motherduck;
 use crate::pipeline::FileProcessor;
 use crate::pipeline::Interval;
+use crate::pipeline::StreamType;
 use chrono::Datelike;
 use chrono::{DateTime, Utc};
+use duckdb::Connection;
 
 use crate::utils::duckdb::{duckdb_open, duckdb_open_memory};
 
@@ -45,6 +45,7 @@ pub struct ModelProcessor {
     pub feature_list: Vec<String>,
     pub protocol_list: Vec<String>,
     pub md_database: String,
+    pub export_path: String,
 }
 
 impl ModelProcessor {
@@ -65,6 +66,7 @@ impl ModelProcessor {
             .or_insert("daddr,dport,dentropy,sentropy,diat,siat,spd,pcr,orient,stime");
         options.entry("proto").or_insert("udp,tcp");
         options.entry("md").or_insert("");
+        options.entry("export").or_insert("");
 
         for (key, value) in &options {
             if !value.is_empty() {
@@ -81,6 +83,8 @@ impl ModelProcessor {
                 md_database.clear();
             }
         }
+
+        let export_path = options.get("export").expect("expected export path");
         let features = options.get("features").expect("expected feature list");
         let feature_list: Vec<String> = features.split(",").map(str::to_string).collect();
 
@@ -104,6 +108,7 @@ impl ModelProcessor {
             feature_list: feature_list,
             protocol_list: protocol_list,
             md_database: md_database.to_string(),
+            export_path: export_path.to_string(),
         })
     }
 
@@ -132,6 +137,29 @@ impl ModelProcessor {
             })?;
 
             let _ = md_conn.close();
+            println!("{}: done.", self.command);
+        }
+
+        Ok(())
+    }
+    fn export_model(&self, sink_conn: &mut Connection) -> Result<(), Error> {
+        // if the export_path is empty, we do not upload the model
+        if !self.export_path.is_empty() {
+            println!("{}: exporting model {}", self.command, self.export_path);
+            let parquet_file = format!("{}/hbos_summary.parquet", self.export_path);
+            // upload the model to motherduck
+            let sql_command = format!(
+                "COPY (SELECT * FROM hbos_summary) TO {} (FORMAT 'parquet');",
+                parquet_file
+            );
+
+            sink_conn.execute_batch(&sql_command).map_err(|e| {
+                Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("DuckDB error during model upload: {}", e),
+                )
+            })?;
+
             println!("{}: done.", self.command);
         }
 
@@ -373,6 +401,8 @@ impl FileProcessor for ModelProcessor {
                     Error::new(std::io::ErrorKind::Other, format!("summarize error: {}", e))
                 })?;
         }
+
+        self.export_model(&mut db_output)?;
         let _ = db_output
             .close()
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {:?}", e)))?;

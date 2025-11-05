@@ -29,7 +29,8 @@ int ipfix_file_import(
                  const char *input_file,
                  const char *output_dir,
                  const char *asn_file,
-                 const char *country_file);
+                 const char *country_file,
+                 const char *city_file);
 
 int ipfix_socket_import(
     const char *command,
@@ -45,4 +46,5 @@ int ipfix_socket_import(
     int verbose,
     const char *output_dir,
     const char *asn_file,
-    const char *country_file);
+    const char *country_file,
+    const char *city_file);

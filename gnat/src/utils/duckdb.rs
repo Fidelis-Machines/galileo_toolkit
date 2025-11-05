@@ -4,7 +4,7 @@ use std::env;
 pub fn duckdb_open(db_file: &str, mem_gig: u32) -> Result<Connection, duckdb::Error> {
     let mem_threshold = format!("{}GB", mem_gig);
     let cwd = env::current_dir().unwrap();
-    let sql_temp_directory = format!("SET max_temp_directory_size = '64GB'");
+    let sql_temp_directory = format!("SET max_temp_directory_size = '64GB';SET temp_directory = '/tmp';");
 
     let config = Config::default().max_memory(&mem_threshold)?.threads(4)?;
 
@@ -25,7 +25,7 @@ pub fn duckdb_open_readonly(db_file: &str, mem_gig: u32) -> Result<Connection, d
     let mem_threshold = format!("{}GB", mem_gig);
 
     let cwd = env::current_dir().unwrap();
-    let sql_temp_directory = format!("SET max_temp_directory_size = '64GB'");
+    let sql_temp_directory = format!("SET max_temp_directory_size = '64GB';SET temp_directory = '/tmp';");
 
     let readonly_config = Config::default()
         .max_memory(&mem_threshold)?
@@ -52,7 +52,7 @@ pub fn duckdb_open_memory(mem_gig: u32) -> Result<Connection, duckdb::Error> {
     let conn = Connection::open_in_memory_with_flags(config)?;
 
     let cwd = env::current_dir().unwrap();
-    let sql_temp_directory = format!("SET max_temp_directory_size = '64GB'");
+    let sql_temp_directory = format!("SET max_temp_directory_size = '64GB';SET temp_directory = '/tmp';");
 
     conn.execute_batch(&sql_temp_directory)?;
 

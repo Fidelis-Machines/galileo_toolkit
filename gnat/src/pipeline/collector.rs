@@ -27,6 +27,7 @@ pub struct CollectorProcessor {
     pub observation: String,
     pub asn: String,
     pub country: String,
+    pub city: String,
     pub ssl_ca_file: String,
     pub ssl_cert_file: String,
     pub ssl_key_file: String,
@@ -53,6 +54,7 @@ impl CollectorProcessor {
         options.entry("observation").or_insert("gnat");
         options.entry("asn").or_insert("");
         options.entry("country").or_insert("");
+        options.entry("city").or_insert("");
         options.entry("port").or_insert("4739");
         options.entry("transport").or_insert("tcp");
         options.entry("ssl_ca_file").or_insert("");
@@ -71,6 +73,7 @@ impl CollectorProcessor {
         let observation = options.get("observation").expect("expected observation");
         let asn = options.get("asn").expect("expected asn");
         let country = options.get("country").expect("expected country");
+        let city = options.get("city").expect("expected city");
         let transport = options.get("transport").expect("expected asn");
         let port = options.get("port").expect("expected port");
         let ssl_ca_file = options.get("ssl_ca_file").expect("expected ssl_ca_file");
@@ -106,6 +109,7 @@ impl CollectorProcessor {
             observation: observation.to_string(),
             asn: asn.to_string(),
             country: country.to_string(),
+            city: city.to_string(),
             ssl_ca_file: ssl_ca_file.to_string(),
             ssl_cert_file: ssl_cert_file.to_string(),
             ssl_key_file: ssl_key_file.to_string(),
@@ -155,6 +159,7 @@ impl FileProcessor for CollectorProcessor {
             &self.output_list[0],
             &self.asn,
             &self.country,
+            &self.city,
         );
         if status < 0 {
             Err(Error::new(

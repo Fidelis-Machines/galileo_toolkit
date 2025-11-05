@@ -79,8 +79,8 @@ ycOpenListener(
             break;
         if (fbTemplateAppendSpecArray(gnat->template, g_yaf_flow_spec, YTF_ALL, err) == FALSE)
             break;
-        //if (fbTemplateAppendSpecArray(gnat->template, yaf_process_stats_spec, YTF_ALL, err) == FALSE)
-        //    break;            
+        // if (fbTemplateAppendSpecArray(gnat->template, yaf_process_stats_spec, YTF_ALL, err) == FALSE)
+        //     break;
         gnat->session = fbSessionAlloc(gnat->model);
         if (gnat->session == NULL)
             break;
@@ -159,6 +159,19 @@ ycOpenListener(
             }
             gnat->country_mmdb_ptr = &gnat->country_mmdb;
         }
+        //
+        // maxmind City
+        //
+        memset(&gnat->city_mmdb, 0, sizeof(gnat->city_mmdb));
+        if (strlen(gnat->country_file))
+        {
+            if (MMDB_SUCCESS != MMDB_open(gnat->city_file, MMDB_MODE_MMAP, &gnat->city_mmdb))
+            {
+                fprintf(stderr, "%s: failed to load geolite - city: %s\n", __FUNCTION__, gnat->city_file);
+                return FALSE;
+            }
+            gnat->city_mmdb_ptr = &gnat->city_mmdb;
+        }
         return TRUE;
     } while (0);
     fprintf(stderr, "%s: failed\n", __FUNCTION__);
@@ -182,6 +195,9 @@ ycCloseListener(
 
         if (gnat->country_mmdb_ptr)
             MMDB_close(&gnat->country_mmdb);
+
+        if (gnat->city_mmdb_ptr)
+            MMDB_close(&gnat->city_mmdb);
 
         if (gnat->ndpi_ctx)
             ndpi_exit_detection_module(gnat->ndpi_ctx);
@@ -370,6 +386,7 @@ int libfixbuf_file_import(
     const char *output_dir,
     const char *asn_file,
     const char *country_file,
+    const char *city_file,
     uint16_t risk_threshold)
 {
     int rv = 0;
@@ -391,6 +408,7 @@ int libfixbuf_file_import(
     gnat.output_dir = output_dir ? strdup(output_dir) : NULL;
     gnat.asn_file = asn_file ? strdup(asn_file) : NULL;
     gnat.country_file = country_file ? strdup(country_file) : NULL;
+    gnat.city_file = city_file ? strdup(city_file) : NULL;
     gnat.observation = observation ? strdup(observation) : NULL;
     gnat.risk_threshold = risk_threshold;
 

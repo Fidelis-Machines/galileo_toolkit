@@ -130,7 +130,7 @@ PrintTCPFlags(
     {
         g_string_append_c(str, '.');
     }
-    
+
     if (rflags & YF_TF_URG)
     {
         g_string_append_c(str, 'u');
@@ -264,6 +264,7 @@ static int AppendIpfixRecord(duckdb_appender appender,
                              const YAF_FLOW_RECORD *flow,
                              MMDB_s *asn_mmdb,
                              MMDB_s *country_mmdb,
+                             MMDB_s *city_mmdb,
                              uint16_t risk_threshold)
 {
     // Defensive: validate parameters
@@ -289,14 +290,14 @@ static int AppendIpfixRecord(duckdb_appender appender,
     g_string_truncate(category, 0);
 
     duckdb_append_uint32(appender, IPFIX_STREAM); // IPFIX stream
-    duckdb_append_null(appender); // UUID
+    duckdb_append_null(appender);                 // UUID
     duckdb_append_varchar(appender, observation);
     duckdb_timestamp start = {(flow->flowStartMilliseconds * 1000)};
     duckdb_append_timestamp(appender, start);
     duckdb_timestamp end = {(flow->flowEndMilliseconds * 1000)};
     duckdb_append_timestamp(appender, end);
     duckdb_append_uint32(appender, (flow->flowEndMilliseconds - flow->flowStartMilliseconds)); // duration in milliseconds
-    duckdb_append_uint32(appender, flow->reverseFlowDeltaMilliseconds); // rtt in milliseconds
+    duckdb_append_uint32(appender, flow->reverseFlowDeltaMilliseconds);                        // rtt in milliseconds
 
     uint32_t pcr = 0;
     if ((flow->dataByteCount + flow->reverseDataByteCount) != 0)
@@ -481,8 +482,8 @@ static int AppendIpfixRecord(duckdb_appender appender,
     strncat(orientation, sprivate_address ? "i" : "o", sizeof(orientation) - strlen(orientation) - 1);
     strncat(orientation, dprivate_address ? "i" : "o", sizeof(orientation) - strlen(orientation) - 1);
 
-    char scountry[32] = {"na"};
-    char dcountry[32] = {"na"};
+    char scountry[32] = {""};
+    char dcountry[32] = {""};
     if (country_mmdb)
     {
         if (!sprivate_address)
@@ -514,7 +515,7 @@ static int AppendIpfixRecord(duckdb_appender appender,
         }
         else
         {
-            strncpy(scountry, "private", sizeof(scountry) - 1);
+            strncpy(scountry, "", sizeof(scountry) - 1);
         }
 
         if (!dprivate_address)
@@ -546,18 +547,88 @@ static int AppendIpfixRecord(duckdb_appender appender,
         }
         else
         {
-            strncpy(dcountry, "private", sizeof(scountry) - 1);
+            strncpy(dcountry, "", sizeof(scountry) - 1);
         }
     }
-
     duckdb_append_varchar(appender, scountry);
     duckdb_append_varchar(appender, dcountry);
+
+    char scity[32] = {""};
+    char dcity[32] = {""};
+    if (city_mmdb)
+    {
+        if (!sprivate_address)
+        {
+            result = MMDB_lookup_string(city_mmdb, sabuf, &gai_error, &mmdb_error);
+            if (gai_error)
+            {
+                fprintf(stderr, "%s: city getaddrinfo failed: %s", __FUNCTION__, gai_strerror(gai_error));
+            }
+            else if (mmdb_error)
+            {
+                fprintf(stderr, "%s: city geopip lookup failed: %s", __FUNCTION__, MMDB_strerror(mmdb_error));
+            }
+            else if (result.found_entry)
+            {
+
+                MMDB_entry_data_s entry_data;
+                if (MMDB_get_value(&result.entry, &entry_data,
+                                   "city", "names", "en", NULL) == MMDB_SUCCESS)
+                {
+                    if (entry_data.has_data && entry_data.type == MMDB_DATA_TYPE_UTF8_STRING)
+                    {
+                        int len = entry_data.data_size > sizeof(scity) ? (sizeof(scity) - 1) : entry_data.data_size;
+                        strncpy(scity, entry_data.utf8_string, len);
+                        scity[len] = '\0';
+                        ToLowerString(scity);
+                    }
+                }
+            }
+        }
+        else
+        {
+            strncpy(scity, "", sizeof(scity) - 1);
+        }
+
+        if (!dprivate_address)
+        {
+            result = MMDB_lookup_string(country_mmdb, dabuf, &gai_error, &mmdb_error);
+            if (gai_error)
+            {
+                fprintf(stderr, "%s: dcity getaddrinfo failed: %s", __FUNCTION__, gai_strerror(gai_error));
+            }
+            else if (mmdb_error)
+            {
+                fprintf(stderr, "%s: dcity geopip lookup failed: %s", __FUNCTION__, MMDB_strerror(mmdb_error));
+            }
+            else if (result.found_entry)
+            {
+                MMDB_entry_data_s entry_data;
+                if (MMDB_get_value(&result.entry, &entry_data,
+                                   "city", "iso_code", NULL) == MMDB_SUCCESS)
+                {
+                    if (entry_data.has_data && entry_data.type == MMDB_DATA_TYPE_UTF8_STRING)
+                    {
+                        int len = entry_data.data_size > sizeof(dcity) ? (sizeof(dcity) - 1) : entry_data.data_size;
+                        strncpy(dcity, entry_data.utf8_string, len);
+                        dcity[len] = '\0';
+                        ToLowerString(dcity);
+                    }
+                }
+            }
+        }
+        else
+        {
+            strncpy(dcity, "", sizeof(dcity) - 1);
+        }
+    }
+    duckdb_append_varchar(appender, scity);
+    duckdb_append_varchar(appender, dcity);
 
     uint32_t sasn = 0;
     uint32_t dasn = 0;
     char sasnorg[ASNORG_LEN] = {"na"};
     char dasnorg[ASNORG_LEN] = {"na"};
-
     if (asn_mmdb)
     {
         int smulticast = 0;
@@ -823,6 +894,7 @@ static int WriteIpfixRecord(const char *observation,
                             const YAF_FLOW_RECORD *flow,
                             MMDB_s *asn_mmdb,
                             MMDB_s *country_mmdb,
+                            MMDB_s *city_mmdb,
                             uint16_t risk_threshold)
 {
     if ((flow->protocolIdentifier == 0) && (flow->destinationIPv4Address == 0))
@@ -831,7 +903,7 @@ static int WriteIpfixRecord(const char *observation,
         return 0;
     }
 
-    if (AppendIpfixRecord(appender, observation, ndpi_ctx, flow, asn_mmdb, country_mmdb, risk_threshold) < 0)
+    if (AppendIpfixRecord(appender, observation, ndpi_ctx, flow, asn_mmdb, country_mmdb, city_mmdb, risk_threshold) < 0)
     {
         fprintf(stderr, "%s: AppendIpfixRecord error\n", __FUNCTION__);
         return -1;
@@ -925,7 +997,7 @@ RotateFileSink(MIOSource *source,
                void *ctx,
                uint32_t *flags,
                GError **err)
-{    
+{
     gboolean status = FALSE;
     char file_name[PATH_MAX + 1];
     char tmp_file[(PATH_MAX * 2) + 1];
@@ -1106,6 +1178,7 @@ ReaderToFileSink(
                                       &ipfix_record,
                                       gnat->asn_mmdb_ptr,
                                       gnat->country_mmdb_ptr,
+                                      gnat->city_mmdb_ptr,
                                       gnat->risk_threshold);
         if (status < 0)
         {
@@ -1126,7 +1199,7 @@ ReaderToFileSink(
         memset(&ipfix_record, 0, yaf_rec_len);
     }
 
-    if (g_error_matches(*err, FB_ERROR_DOMAIN,FB_ERROR_EOF))
+    if (g_error_matches(*err, FB_ERROR_DOMAIN, FB_ERROR_EOF))
     {
         /* EOF on a single collector not an issue. */
         *flags |= (MIO_F_CTL_SINKCLOSE | MIO_F_CTL_TERMINATE);
@@ -1136,7 +1209,7 @@ ReaderToFileSink(
 
     if (g_error_matches(*err, FB_ERROR_DOMAIN, FB_ERROR_IPFIX))
     {
-        /*  
+        /*
             A message was received larger than the collector buffer size.
             Usually when YAF is stopped adbruptly, the collector
             will receive a message that is larger than the buffer size.
@@ -1148,7 +1221,7 @@ ReaderToFileSink(
         return TRUE;
     }
 
-    //printf(stderr, "%s: invalid format\n", __FUNCTION__);
+    // printf(stderr, "%s: invalid format\n", __FUNCTION__);
     /* bad message */
     sink->active = FALSE;
     *flags |= (MIO_F_CTL_SINKCLOSE | MIO_F_CTL_TERMINATE | MIO_F_CTL_ERROR);
@@ -1214,6 +1287,7 @@ SocketToFileSink(
                              &ipfix_record,
                              &gnat->asn_mmdb,
                              &gnat->country_mmdb,
+                             &gnat->city_mmdb,
                              gnat->risk_threshold) < 0)
 
         {

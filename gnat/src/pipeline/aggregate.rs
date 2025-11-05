@@ -313,7 +313,7 @@ impl FileProcessor for AggregationProcessor {
             println!("{}: exporting", self.command);
             let sql_command = format!("COPY (SELECT *, year(bucket) AS year, month(bucket) AS month, day(bucket) AS day FROM metrics)
                    TO '{}' 
-                   (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 100_000, PARTITION_BY (year, month, day), 
+                   (FORMAT parquet, PARTITION_BY (year, month, day), 
                    OVERWRITE_OR_IGNORE,FILENAME_PATTERN 'gnat-{}-{}.{{i}}');", self.output_list[0], self.command, self.dtg_format);
 
             self.db_conn.execute_batch(&sql_command).map_err(|e| {

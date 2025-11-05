@@ -26,6 +26,7 @@ pub struct ImportProcessor {
     pub observation: String,
     pub asn: String,
     pub country: String,
+    pub city: String,
 }
 
 impl ImportProcessor {
@@ -44,6 +45,7 @@ impl ImportProcessor {
         options.entry("observation").or_insert("gnat");
         options.entry("asn").or_insert("");
         options.entry("country").or_insert("");
+        options.entry("city").or_insert("");
         for (key, value) in &options {
             if !value.is_empty() {
                 println!("{}: [{}=>{}]", command, key, value);
@@ -65,7 +67,13 @@ impl ImportProcessor {
                 return Err(Error::other("invalid COUNTRY database path"));
             }
         }
-
+        let city = options.get("city").expect("expected city");
+        if !city.is_empty() {
+            let city_path = Path::new(&city);
+            if !city_path.exists() {
+                return Err(Error::other("invalid CITY database path"));
+            }
+        }
         let mut input_list = Vec::<String>::new();
         input_list.push(input.to_string());
         let mut output_list = Vec::<String>::new();
@@ -80,6 +88,7 @@ impl ImportProcessor {
             observation: observation.to_string(),
             asn: asn.to_string(),
             country: country.to_string(),
+            city: city.to_string(),
         })
     }
 }
@@ -143,6 +152,7 @@ impl FileProcessor for ImportProcessor {
                 &observation,
                 &self.asn,
                 &self.country,
+                &self.city,
             );
             if import_result != 0 {
                 return Err(Error::other(format!("import failed for file: {}", file)));
