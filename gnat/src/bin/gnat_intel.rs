@@ -7,7 +7,7 @@
  */
 
 use clap::Parser;
-use gnat::pipeline::aggregate::AggregationProcessor;
+use gnat::pipeline::intel::ThreatIntelProcessor;
 use gnat::pipeline::FileProcessor;
 use std::error::Error;
 
@@ -34,8 +34,8 @@ struct Args {
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
 
-    let mut aggregation_processor = AggregationProcessor::new(
-        "aggregate",
+    let mut intel_processor = ThreatIntelProcessor::new(
+        "intel",
         &args.input,
         &args.output,
         &args.pass.clone().unwrap_or(String::new()),
@@ -44,7 +44,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         &args.options.clone().unwrap_or(String::new()),
     )?;
 
-    aggregation_processor.run()?;
+    intel_processor.run()?;
 
     Ok(())
 }

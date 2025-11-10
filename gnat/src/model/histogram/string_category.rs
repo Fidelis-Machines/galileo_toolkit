@@ -5,6 +5,7 @@
  * All Rights Reserved.
  * See license information in LICENSE.
  */
+use crate::pipeline::TCP_FILTER;
 use crate::model::histogram::*;
 use crate::model::histogram::{HistogramType, HistogramType::StringCategory};
 use crate::model::table::MemFlowRecord;
@@ -97,7 +98,7 @@ impl StringCategoryHistogram {
             self.name, observe, vlan, proto,
         );
         if proto == "tcp" {
-            sql_command.push_str(" AND (iflags ^@ 'Ss');");
+            sql_command.push_str(TCP_FILTER);
         } else {
             sql_command.push_str(";");
         }
@@ -232,6 +233,8 @@ impl StringCategoryHistogram {
             "uflags" => self.probability(&record.uflags),
             "scountry" => self.probability(&record.scountry),
             "dcountry" => self.probability(&record.dcountry),
+            "scity" => self.probability(&record.scity),
+            "dcity" => self.probability(&record.dcity),
             "spd" => self.probability(&record.spd),
             "ndpi_appid" => self.probability(&record.appid),
             "ndpi_category" => self.probability(&record.category),

@@ -163,7 +163,7 @@ ycOpenListener(
         // maxmind City
         //
         memset(&gnat->city_mmdb, 0, sizeof(gnat->city_mmdb));
-        if (strlen(gnat->country_file))
+        if (strlen(gnat->city_file))
         {
             if (MMDB_SUCCESS != MMDB_open(gnat->city_file, MMDB_MODE_MMAP, &gnat->city_mmdb))
             {

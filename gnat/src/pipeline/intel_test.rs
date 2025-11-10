@@ -1,11 +1,11 @@
-//! Tests for AggregationProcessor in pipeline::aggregation
+//! Tests for AggregationProcessor in pipeline::intel
 
 use super::*;
 use crate::pipeline::{Interval, FileType};
 
 #[test]
-fn test_aggregation_processor_new_and_process() {
-    let command = "aggregationcmd";
+fn test_intel_processor_new_and_process() {
+    let command = "intelcmd";
     let input = "input";
     let output = "output";
     let pass = "pass";
@@ -14,7 +14,7 @@ fn test_aggregation_processor_new_and_process() {
     let options_string = "";
 
     // Should construct without error
-    let mut aggregation = AggregationProcessor::new(
+    let mut intel = AggregationProcessor::new(
         command,
         input,
         output,
@@ -27,6 +27,6 @@ fn test_aggregation_processor_new_and_process() {
     // Test process with empty file list and dummy FileType
     let file_list = vec![];
     let schema_type = FileType::V1;
-    let result = aggregation.process(&file_list, schema_type);
+    let result = intel.process(&file_list, schema_type);
     assert!(result.is_ok(), "process should succeed on empty file list");
 }

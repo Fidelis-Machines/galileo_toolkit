@@ -575,7 +575,7 @@ static int AppendIpfixRecord(duckdb_appender appender,
                 if (MMDB_get_value(&result.entry, &entry_data,
                                    "city", "names", "en", NULL) == MMDB_SUCCESS)
                 {
-                    if (entry_data.has_data && entry_data.type == MMDB_DATA_TYPE_UTF8_STRING)
+                    if (entry_data.has_data)
                     {
                         int len = entry_data.data_size > sizeof(scity) ? (sizeof(scity) - 1) : entry_data.data_size;
                         strncpy(scity, entry_data.utf8_string, len);
@@ -592,7 +592,7 @@ static int AppendIpfixRecord(duckdb_appender appender,
 
         if (!dprivate_address)
         {
-            result = MMDB_lookup_string(country_mmdb, dabuf, &gai_error, &mmdb_error);
+            result = MMDB_lookup_string(city_mmdb, dabuf, &gai_error, &mmdb_error);
             if (gai_error)
             {
                 fprintf(stderr, "%s: dcity getaddrinfo failed: %s", __FUNCTION__, gai_strerror(gai_error));
@@ -605,9 +605,9 @@ static int AppendIpfixRecord(duckdb_appender appender,
             {
                 MMDB_entry_data_s entry_data;
                 if (MMDB_get_value(&result.entry, &entry_data,
-                                   "city", "iso_code", NULL) == MMDB_SUCCESS)
+                                   "city", "names", "en", NULL) == MMDB_SUCCESS)
                 {
-                    if (entry_data.has_data && entry_data.type == MMDB_DATA_TYPE_UTF8_STRING)
+                    if (entry_data.has_data)
                     {
                         int len = entry_data.data_size > sizeof(dcity) ? (sizeof(dcity) - 1) : entry_data.data_size;
                         strncpy(dcity, entry_data.utf8_string, len);

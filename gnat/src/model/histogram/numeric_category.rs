@@ -5,6 +5,7 @@
  * All Rights Reserved.
  * See license information in LICENSE.
  */
+use crate::pipeline::TCP_FILTER;
 use crate::model::histogram::HistogramType;
 use crate::model::histogram::HistogramType::*;
 use crate::model::histogram::*;
@@ -109,7 +110,7 @@ impl NumericCategoryHistogram {
             self.name, observe, vlan, proto,
         );
         if proto == "tcp" {
-            sql_command.push_str(" AND (iflags ^@ 'Ss');");
+            sql_command.push_str(TCP_FILTER);
         } else {
             sql_command.push_str(";");
         }

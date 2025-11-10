@@ -5,6 +5,7 @@
  * All Rights Reserved.
  * See license information in LICENSE.
  */
+use crate::pipeline::TCP_FILTER;
 use crate::model::histogram::HistogramType;
 use crate::model::histogram::HistogramType::*;
 use crate::model::histogram::*;
@@ -18,6 +19,8 @@ use std::fmt::format;
 use std::io::Error;
 use std::net::IpAddr;
 use std::str::FromStr;
+
+
 #[derive(Debug)]
 pub struct IpAddrCategoryHistogram {
     name: String,
@@ -124,7 +127,7 @@ impl IpAddrCategoryHistogram {
         );
 
         if proto == "tcp" {
-            sql_command.push_str(" AND (iflags ^@ 'Ss');");
+            sql_command.push_str(TCP_FILTER);
         } else {
             sql_command.push_str(";");
         }

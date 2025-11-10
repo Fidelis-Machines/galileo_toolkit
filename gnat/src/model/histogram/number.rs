@@ -5,13 +5,13 @@
  * All Rights Reserved.
  * See license information in LICENSE.
  */
-
 use crate::model::histogram::HistogramType;
 use crate::model::histogram::HistogramType::*;
 use crate::model::histogram::*;
 use crate::model::table::HistogramIntegerValue;
 use crate::model::table::MemFlowRecord;
 use crate::model::table::{HistogramSummaryTable, NumericHistogramTable};
+use crate::pipeline::TCP_FILTER;
 use duckdb::{params, Appender, Connection, DropBehavior};
 use std::fmt::format;
 use std::io::Error;
@@ -97,20 +97,17 @@ impl NumberHistogram {
         proto: &str,
     ) -> Result<(), duckdb::Error> {
         let mut sql_command = format!(
-            "CREATE TABLE number AS SELECT {} FROM flow WHERE observe='{}' AND dvlan={} AND proto='{}'",
-            self.name,
-            observe,
-            vlan,
-            proto,
+            "CREATE TABLE {} AS SELECT {} FROM flow WHERE observe='{}' AND dvlan={} AND proto='{}'",
+            self.name, self.name, observe, vlan, proto,
         );
         if proto == "tcp" {
-            sql_command.push_str(" AND (iflags ^@ 'Ss');");
+            sql_command.push_str(TCP_FILTER);
         } else {
             sql_command.push_str(";");
         }
         db.execute_batch(&sql_command)?;
 
-        let sql_command = format!("FROM histogram_values(number,{});", self.name);
+        let sql_command = format!("FROM histogram_values({},{});", self.name, self.name);
         let mut stmt = db.prepare(&sql_command)?;
 
         let record_iter = stmt
@@ -241,6 +238,8 @@ impl NumberHistogram {
             "dentropy" => self.probability(record.dentropy as i64),
             "siat" => self.probability(record.siat as i64),
             "diat" => self.probability(record.diat as i64),
+            "sstdev" => self.probability(record.sstdev as i64),
+            "dstdev" => self.probability(record.dstdev as i64),
             "ssmallpktcnt" => self.probability(record.ssmallpktcnt as i64),
             "dsmallpktcnt" => self.probability(record.dsmallpktcnt as i64),
             "slargepktcnt" => self.probability(record.slargepktcnt as i64),

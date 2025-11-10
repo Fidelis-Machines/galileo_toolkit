@@ -6,13 +6,13 @@
  * See license information in LICENSE.
  */
 
-use duckdb::{params, Connection};
-
 use crate::model::histogram::ipaddr_category::IpAddrCategoryHistogram;
 use crate::model::histogram::number::NumberHistogram;
 use crate::model::histogram::numeric_category::NumericCategoryHistogram;
 use crate::model::histogram::string_category::StringCategoryHistogram;
 use crate::model::histogram::time_category::TimeCategoryHistogram;
+use crate::pipeline::TCP_FILTER;
+use duckdb::{params, Connection};
 
 use crate::model::histogram::{
     DEFAULT_ASN_MODULUS, DEFAULT_FREQUENCY_BIN_SIZE, DEFAULT_NETWORK_MODULUS, DEFAULT_PORT_MODULUS,
@@ -28,6 +28,20 @@ use chrono::{DateTime, Utc};
 use duckdb::{Appender, DropBehavior};
 use std::collections::HashMap;
 use std::fs;
+use std::path::PathBuf;
+
+struct DbFileRemover {
+    path: PathBuf,
+}
+
+impl Drop for DbFileRemover {
+    fn drop(&mut self) {
+        if Path::new(&self.path).exists() {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+}
+
 use std::io::Error;
 use std::path::Path;
 
@@ -381,8 +395,6 @@ impl HistogramModels {
     }
 
     pub fn score(&mut self, db_connection: &mut Connection) -> Result<u64, Error> {
-
-
         let mut score_appender = db_connection
             .appender("score_table")
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
@@ -393,7 +405,7 @@ impl HistogramModels {
         );
 
         if self.proto == "tcp" {
-            sql_command.push_str(" AND (iflags ^@ 'Ss');");
+            sql_command.push_str(TCP_FILTER);
         } else {
             sql_command.push_str(";");
         }
@@ -679,7 +691,11 @@ impl HistogramModels {
         let rfc3339_name: String = current_utc.to_rfc3339();
 
         let db_input_file = format!("summarize.{}.tmp", rfc3339_name.replace(":", "-"));
-        let db_input = duckdb_open(&db_input_file, 1)
+        let _db_remove = DbFileRemover {
+            path: db_input_file.clone().into(),
+        };
+
+        let db_input = duckdb_open(&db_input_file, 2)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
 
         let sql_command = format!(
@@ -747,23 +763,23 @@ impl HistogramModels {
                     reason: row.get(43).expect("missing value"),
                     smac: row.get(44).expect("missing value"),
                     dmac: row.get(45).expect("missing value"),
-                    scountry: row.get(46).expect("missing value"),
-                    dcountry: row.get(47).expect("missing value"),
-                    scity: row.get(48).expect("missing value"),
-                    dcity: row.get(49).expect("missing value"),
+                    scountry: row.get(46).unwrap_or("".to_string()),
+                    dcountry: row.get(47).unwrap_or("".to_string()),
+                    scity: row.get(48).unwrap_or("".to_string()),
+                    dcity: row.get(49).unwrap_or("".to_string()),
                     sasn: row.get(50).expect("missing value"),
                     dasn: row.get(51).expect("missing value"),
-                    sasnorg: row.get(52).expect("missing value"),
-                    dasnorg: row.get(53).expect("missing value"),
+                    sasnorg: row.get(52).unwrap_or("".to_string()),
+                    dasnorg: row.get(53).unwrap_or("".to_string()),
                     orient: row.get(54).expect("missing value"),
                     hbos_score: row.get(55).expect("missing value"),
                     hbos_severity: row.get(56).expect("missing value"),
                     appid: row.get(57).expect("missing value"),
                     category: row.get(58).unwrap_or("".to_string()),
                     risk_bits: row.get(59).expect("missing value"),
-                    risk_score: row.get(61).expect("missing value"),
-                    risk_severity: row.get(62).expect("missing value"),
-                    trigger: row.get(63).expect("missing value"),
+                    risk_score: row.get(60).expect("missing value"),
+                    risk_severity: row.get(61).expect("missing value"),
+                    trigger: row.get(62).expect("missing value"),
                 })
             })
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
@@ -772,7 +788,11 @@ impl HistogramModels {
         let current_utc: DateTime<Utc> = Utc::now();
         let rfc3339_name: String = current_utc.to_rfc3339();
         let score_input_file = format!("score.{}.tmp", rfc3339_name.replace(":", "-"));
-        let mut score_conn = duckdb_open(&score_input_file, 1)
+        let _db_remove = DbFileRemover {
+            path: score_input_file.clone().into(),
+        };
+
+        let mut score_conn = duckdb_open(&score_input_file, 2)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
         {
             score_conn.execute_batch(HBOS_SCORE).map_err(|e| {
@@ -917,9 +937,11 @@ impl HistogramModels {
         let current_utc: DateTime<Utc> = Utc::now();
         let rfc3339_name: String = current_utc.to_rfc3339();
         let db_input_file = format!("build.{}.tmp", rfc3339_name.replace(":", "-"));
+        let _db_remove = DbFileRemover {
+            path: db_input_file.clone().into(),
+        };
 
-        let mut conn = duckdb_open(&db_input_file, 1)?;
-        //    .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
+        let mut conn = duckdb_open(&db_input_file, 2)?;
 
         let sql_command = format!(
             "CREATE OR REPLACE TABLE flow AS (SELECT * FROM read_parquet({}) 
@@ -1049,6 +1071,16 @@ impl HistogramModels {
                     histogram.build(&conn, &self.observe, self.vlan, &self.proto)?;
                     self.numerical.insert(feature.to_string(), histogram);
                 }
+                "sstdev" => {
+                    let mut histogram = NumberHistogram::new(feature, DEFAULT_FREQUENCY_BIN_SIZE);
+                    histogram.build(&conn, &self.observe, self.vlan, &self.proto)?;
+                    self.numerical.insert(feature.to_string(), histogram);
+                }
+                "dstdev" => {
+                    let mut histogram = NumberHistogram::new(feature, DEFAULT_FREQUENCY_BIN_SIZE);
+                    histogram.build(&conn, &self.observe, self.vlan, &self.proto)?;
+                    self.numerical.insert(feature.to_string(), histogram);
+                }                  
                 "ssmallpktcnt" => {
                     let mut histogram = NumberHistogram::new(feature, DEFAULT_FREQUENCY_BIN_SIZE);
                     histogram.build(&conn, &self.observe, self.vlan, &self.proto)?;
@@ -1088,7 +1120,7 @@ impl HistogramModels {
                     let mut histogram = NumberHistogram::new(feature, DEFAULT_FREQUENCY_BIN_SIZE);
                     histogram.build(&conn, &self.observe, self.vlan, &self.proto)?;
                     self.numerical.insert(feature.to_string(), histogram);
-                }
+                }              
                 "sstdevpayload" => {
                     let mut histogram = NumberHistogram::new(feature, DEFAULT_FREQUENCY_BIN_SIZE);
                     histogram.build(&conn, &self.observe, self.vlan, &self.proto)?;
@@ -1128,7 +1160,7 @@ impl HistogramModels {
                     let mut histogram = StringCategoryHistogram::new(feature);
                     histogram.build(&conn, &self.observe, self.vlan, &self.proto)?;
                     self.string_category.insert(feature.to_string(), histogram);
-                }                
+                }
                 "spd" => {
                     let mut histogram = StringCategoryHistogram::new(feature);
                     histogram.build(&conn, &self.observe, self.vlan, &self.proto)?;
@@ -1149,10 +1181,6 @@ impl HistogramModels {
         }
 
         let _ = conn.close();
-        // remove the temporary database file
-        if Path::new(&db_input_file).exists() {
-            fs::remove_file(&db_input_file).expect("failed to remove db_input_file");
-        }
 
         Ok(())
     }

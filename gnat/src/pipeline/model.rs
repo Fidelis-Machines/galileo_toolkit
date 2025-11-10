@@ -24,16 +24,31 @@ use crate::pipeline::use_motherduck;
 use crate::pipeline::FileProcessor;
 use crate::pipeline::Interval;
 use crate::pipeline::StreamType;
+use crate::utils::duckdb::{duckdb_open, duckdb_open_memory};
 use chrono::Datelike;
 use chrono::{DateTime, Utc};
 use duckdb::Connection;
-
-use crate::utils::duckdb::{duckdb_open, duckdb_open_memory};
+use file_lock::{FileLock, FileOptions};
+use std::fs;
+use std::fs::OpenOptions;
+use std::io::prelude::*;
+use std::path::PathBuf;
 
 use std::collections::HashMap;
-use std::fs;
 use std::io::Error;
 use std::path::Path;
+
+struct DbFileRemover {
+    path: PathBuf,
+}
+
+impl Drop for DbFileRemover {
+    fn drop(&mut self) {
+        if Path::new(&self.path).exists() {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+}
 
 pub struct ModelProcessor {
     pub command: String,
@@ -197,6 +212,19 @@ impl FileProcessor for ModelProcessor {
         false
     }
     fn process(&mut self, file_list: &Vec<String>) -> Result<(), Error> {
+        let lock_filename = format!("{}/.lock", self.input_list[0]);
+        let options = FileOptions::new().write(true).create(true).append(true);
+        let mut file_lock = match FileLock::lock(&lock_filename, false, options) {
+            Ok(lock) => lock,
+            Err(err) => {
+                println!(
+                    "{}: unable to acquire lock for {} -- skipping.",
+                    self.command, lock_filename
+                );
+                return Ok(());
+            }
+        };
+
         // Use iterator and join for file list formatting
         let parquet_list = file_list
             .iter()
@@ -256,6 +284,9 @@ impl FileProcessor for ModelProcessor {
             self.model_list[0],
             rfc3339_name.replace(":", "-")
         );
+        let _tmp_remove = DbFileRemover {
+            path: tmp_input.clone().into(),
+        };
         let mut db_input = duckdb_open(&tmp_input, 1)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
 
@@ -263,7 +294,7 @@ impl FileProcessor for ModelProcessor {
         // if there are not enough days, skip the model build
         println!("{}: checking dataset duration...", self.command);
         let sql_days_command = format!(
-            "SELECT date_diff('day',first,last) 
+            "SELECT date_diff('day',first,last) + 1 AS days
              FROM (SELECT MIN(stime) AS first, MAX(stime) AS last FROM read_parquet({}));",
             parquet_list
         );
@@ -374,6 +405,10 @@ impl FileProcessor for ModelProcessor {
             self.model_list[0],
             rfc3339_name.replace(":", "-")
         );
+        let _tmp_remove = DbFileRemover {
+            path: tmp_output.clone().into(),
+        };
+
         let mut db_output = duckdb_open(&tmp_output, 1)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
 

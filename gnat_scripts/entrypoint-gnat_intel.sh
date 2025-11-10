@@ -25,7 +25,7 @@ if [ ! -z "${GNAT_OPTIONS}" ]; then
     COMMANDLINE_OPTIONS="${COMMANDLINE_OPTIONS} --options ${GNAT_OPTIONS}"
 fi
 
-/opt/gnat/bin/gnat_aggregate \
+/opt/gnat/bin/gnat_intel \
     --input ${GNAT_INPUT} \
     --output ${GNAT_OUTPUT} \
     ${COMMANDLINE_OPTIONS}

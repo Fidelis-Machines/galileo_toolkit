@@ -48,6 +48,7 @@ RUN --mount=type=cache,target=/var/cache/apt \
 WORKDIR /opt/gnat
 RUN mkdir -p /opt/gnat/bin /opt/gnat/scripts /opt/gnat/etc /opt/gnat/lib/pytorch
 
+COPY --from=builder /builder/gnat_scripts/entrypoint-gnat_intel.sh /opt/gnat/scripts/
 COPY --from=builder /builder/gnat_scripts/entrypoint-gnat_sensor.sh /opt/gnat/scripts/
 COPY --from=builder /builder/gnat_scripts/entrypoint-gnat_import.sh /opt/gnat/scripts/
 COPY --from=builder /builder/gnat_scripts/entrypoint-gnat_collect.sh /opt/gnat/scripts/
@@ -57,30 +58,28 @@ COPY --from=builder /builder/gnat_scripts/entrypoint-gnat_model.sh /opt/gnat/scr
 COPY --from=builder /builder/gnat_scripts/entrypoint-gnat_export.sh /opt/gnat/scripts/
 COPY --from=builder /builder/gnat_scripts/entrypoint-gnat_tag.sh /opt/gnat/scripts/
 COPY --from=builder /builder/gnat_scripts/entrypoint-gnat_sample.sh /opt/gnat/scripts/
-COPY --from=builder /builder/gnat_scripts/entrypoint-gnat_aggregate.sh /opt/gnat/scripts/
 COPY --from=builder /builder/gnat_scripts/entrypoint-gnat_rule.sh /opt/gnat/scripts/
 COPY --from=builder /builder/gnat_scripts/entrypoint-gnat_split.sh /opt/gnat/scripts/
 COPY --from=builder /builder/gnat_scripts/entrypoint-gnat_store.sh /opt/gnat/scripts/
-#COPY --from=builder /builder/gnat_scripts/entrypoint-gnat_cache.sh /opt/gnat/scripts/
 
 COPY --from=builder /builder/gnat_etc/protocols /etc
 COPY --from=builder /usr/local/lib /opt/gnat/lib              
 COPY --from=builder /opt/gnat/lib /opt/gnat/lib
 COPY --from=builder /base/libtorch/lib /opt/gnat/lib/pytorch
 
+COPY --from=builder /builder/gnat/target/release/gnat_intel /opt/gnat/bin/gnat_intel
 COPY --from=builder /builder/gnat/target/release/gnat_collect /opt/gnat/bin/gnat_collect
 COPY --from=builder /builder/gnat/target/release/gnat_import /opt/gnat/bin/gnat_import
 COPY --from=builder /builder/gnat/target/release/gnat_export /opt/gnat/bin/gnat_export
 COPY --from=builder /builder/gnat/target/release/gnat_merge /opt/gnat/bin/gnat_merge
 COPY --from=builder /builder/gnat/target/release/gnat_sample /opt/gnat/bin/gnat_sample
-COPY --from=builder /builder/gnat/target/release/gnat_aggregate /opt/gnat/bin/gnat_aggregate
 COPY --from=builder /builder/gnat/target/release/gnat_hbos /opt/gnat/bin/gnat_hbos
 COPY --from=builder /builder/gnat/target/release/gnat_model /opt/gnat/bin/gnat_model
 COPY --from=builder /builder/gnat/target/release/gnat_tag /opt/gnat/bin/gnat_tag
 COPY --from=builder /builder/gnat/target/release/gnat_rule /opt/gnat/bin/gnat_rule
 COPY --from=builder /builder/gnat/target/release/gnat_split /opt/gnat/bin/gnat_split
 COPY --from=builder /builder/gnat/target/release/gnat_store /opt/gnat/bin/gnat_store
-#COPY --from=builder /builder/gnat/target/release/gnat_cache /opt/gnat/bin/gnat_cache
+
 
 
 COPY --from=builder /opt/gnat/bin/yaf /opt/gnat/bin/gnat_sensor

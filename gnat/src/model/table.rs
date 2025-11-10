@@ -1,22 +1,5 @@
 use duckdb::Appender;
 
-pub mod appid;
-pub mod asn;
-pub mod bytes;
-pub mod country;
-pub mod dns;
-pub mod doh;
-pub mod flow;
-pub mod ip;
-pub mod packets;
-pub mod proto;
-pub mod quic;
-pub mod ssh;
-pub mod vlan;
-pub mod vpn;
-
-//use duckdb::types::Value;
-
 #[derive(Debug)]
 pub struct FeatureSummaryRecord {
     pub name: String,
@@ -243,14 +226,23 @@ pub trait TableTrait {
         };
     }
 }
-pub static CREATE_METRICS_TABLE: &str = "CREATE TABLE IF NOT EXISTS metrics
+pub static CREATE_ABUSE_TABLE: &str = "CREATE TABLE IF NOT EXISTS abuse
 (
-    stream UINTEGER,
-    bucket TIMESTAMP,
-    observe VARCHAR,
-    name VARCHAR,
-    key VARCHAR,
-    value UBIGINT
+    ipAddress VARCHAR,
+    isPublic BOOLEAN,
+    ipVersion SMALLINT,
+    isWhitelist BOOLEAN,
+    abuseConfidence SMALLINT,
+    countryCode VARCHAR,
+    usageType VARCHAR,
+    isp VARCHAR,
+    domain VARCHAR,
+    hostnames VARCHAR,
+    isTorExitNode BOOLEAN,
+    totalReports INTEGER,
+    numDistinctUsers INTEGER,
+    lastReportedAt VARCHAR,
+    cachedAt TIMESTAMP 
 );";
 
 #[derive(Debug)]

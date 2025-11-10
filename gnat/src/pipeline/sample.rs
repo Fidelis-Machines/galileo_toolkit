@@ -19,7 +19,10 @@ use crate::pipeline::Interval;
 use crate::pipeline::StreamType;
 use crate::utils::duckdb::duckdb_open_memory;
 use chrono::{DateTime, Utc};
+use file_lock::{FileLock, FileOptions};
 use std::fs;
+use std::fs::OpenOptions;
+use std::io::prelude::*;
 use std::io::Error;
 use std::path::Path;
 
@@ -157,7 +160,6 @@ impl SampleProcessor {
         //
         //
 
-
         if Path::new(&tmp_filename).exists() {
             fs::rename(&tmp_filename, &final_filename).map_err(|e| {
                 Error::new(std::io::ErrorKind::Other, format!("renaming error: {}", e))
@@ -272,7 +274,12 @@ impl SampleProcessor {
                    AND date_trunc('day',stime) > date_add(current_date, - INTERVAL {} DAY)
                  USING SAMPLE {}%)
                  TO '{}' (FORMAT 'parquet');",
-                record.observe, record.vlan, record.proto, self.retention, self.percent, tmp_filename
+                record.observe,
+                record.vlan,
+                record.proto,
+                self.retention,
+                self.percent,
+                tmp_filename
             );
             conn.execute_batch(&sql_command).map_err(|e| {
                 Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e))
@@ -322,6 +329,17 @@ impl FileProcessor for SampleProcessor {
         true
     }
     fn process(&mut self, file_list: &Vec<String>) -> Result<(), Error> {
+                
+        let lock_filename = format!("{}/.lock", self.output_list[0]);
+        let options = FileOptions::new().write(true).create(true).append(true);
+        let mut file_lock = match FileLock::lock(&lock_filename, false, options) {
+            Ok(lock) => lock,
+            Err(err) => {
+                println!("{}: unable to acquire lock for {} -- skipping.", self.command, lock_filename);
+                return Ok(());
+            }
+        };
+
         if self
             .process_samples(file_list)
             .expect("process_samples failed")
@@ -329,7 +347,7 @@ impl FileProcessor for SampleProcessor {
         {
             self.purge_old()?;
         }
-
+     
         Ok(())
     }
 }
