@@ -12,7 +12,6 @@ use crate::model::histogram::number::NumberHistogram;
 use crate::model::histogram::numeric_category::NumericCategoryHistogram;
 use crate::model::histogram::string_category::StringCategoryHistogram;
 use crate::model::histogram::time_category::TimeCategoryHistogram;
-use crate::model::histogram::{MODEL_DISTINCT_OBSERVATIONS, PARQUET_DISTINCT_OBSERVATIONS};
 use crate::model::table::DistinctObservation;
 use crate::model::table::HbosSummaryRecord;
 
@@ -20,7 +19,9 @@ use crate::pipeline::check_parquet_stream;
 use crate::pipeline::load_environment;
 use crate::pipeline::StreamType;
 use crate::utils::duckdb::{duckdb_open_memory, duckdb_open_readonly};
-use chrono::{DateTime, Utc};
+use crate::utils::common::{format_parquet_list, create_output_filenames};
+use crate::sql::queries;
+use duckdb::params;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Error;
@@ -115,7 +116,7 @@ impl HbosProcessor {
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
 
         let mut stmt = model_conn
-            .prepare(MODEL_DISTINCT_OBSERVATIONS)
+            .prepare(queries::MODEL_DISTINCT_OBSERVATIONS)
             .map_err(|e| {
                 Error::new(
                     std::io::ErrorKind::Other,
@@ -126,48 +127,56 @@ impl HbosProcessor {
         let record_iter = stmt
             .query_map([], |row| {
                 Ok(DistinctObservation {
-                    observe: row.get(0).expect("missing value"),
-                    vlan: row.get(1).expect("missing dvlan"),
-                    proto: row.get(2).expect("missing proto"),
+                    observe: row.get(0)?,
+                    vlan: row.get(1)?,
+                    proto: row.get(2)?,
                 })
             })
-            .expect("query map");
+            .map_err(|e| {
+                Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e))
+            })?;
 
         let mut distinct_observation_models: Vec<DistinctObservation> = Vec::new();
         for record in record_iter {
-            distinct_observation_models.push(record.expect("unwrapping DistinctObservation"));
+            distinct_observation_models.push(record.map_err(|e| {
+                Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e))
+            })?);
         }
 
         let mut hbos_summary_map: HashMap<String, HbosSummaryRecord> = HashMap::new();
         for record in distinct_observation_models.clone().into_iter() {
             let distinct_key = format!("{}/{}/{}", record.observe, record.vlan, record.proto);
 
-            let sql_command = format!(
-                "SELECT * FROM hbos_summary WHERE observe='{}' AND vlan = {} AND proto='{}';",
-                record.observe, record.vlan, record.proto
-            );
-            let mut stmt = model_conn.prepare(&sql_command).expect("hbos_summary");
+            let mut stmt = model_conn
+                .prepare(queries::SELECT_HBOS_SUMMARY)
+                .map_err(|e| {
+                    Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e))
+                })?;
+
             let hbos_summary = stmt
-                .query_row([], |row| {
+                .query_row(params![&record.observe, &record.vlan, &record.proto], |row| {
                     Ok(HbosSummaryRecord {
-                        observe: row.get(0).expect("missing value"),
-                        vlan: row.get(1).expect("missing value"),
-                        proto: row.get(2).expect("missing value"),
-                        min: row.get(3).expect("missing value"),
-                        max: row.get(4).expect("missing value"),
-                        skewness: row.get(5).expect("missing value"),
-                        avg: row.get(6).expect("missing value"),
-                        std: row.get(7).expect("missing value"),
-                        mad: row.get(8).expect("missing value"),
-                        median: row.get(9).expect("missing value"),
-                        quantile: row.get(10).expect("missing value"),
-                        low: row.get(11).expect("missing value"),
-                        medium: row.get(12).expect("missing value"),
-                        high: row.get(13).expect("missing value"),
-                        severe: row.get(14).expect("missing value"),
+                        observe: row.get(0)?,
+                        vlan: row.get(1)?,
+                        proto: row.get(2)?,
+                        min: row.get(3)?,
+                        max: row.get(4)?,
+                        skewness: row.get(5)?,
+                        avg: row.get(6)?,
+                        std: row.get(7)?,
+                        mad: row.get(8)?,
+                        median: row.get(9)?,
+                        quantile: row.get(10)?,
+                        low: row.get(11)?,
+                        medium: row.get(12)?,
+                        high: row.get(13)?,
+                        severe: row.get(14)?,
+                        critical: row.get(15)?,
                     })
                 })
-                .expect("query row");
+                .map_err(|e| {
+                    Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e))
+                })?;
 
             hbos_summary_map.insert(distinct_key, hbos_summary);
         }
@@ -191,22 +200,28 @@ impl HbosProcessor {
         let mut model_conn = duckdb_open_readonly(&self.model_spec, 1)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
         let mut stmt = model_conn
-            .prepare(MODEL_DISTINCT_OBSERVATIONS)
-            .expect("sql prepare");
+            .prepare(queries::MODEL_DISTINCT_OBSERVATIONS)
+            .map_err(|e| {
+                Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e))
+            })?;
 
         let record_iter = stmt
             .query_map([], |row| {
                 Ok(DistinctObservation {
-                    observe: row.get(0).expect("missing value"),
-                    vlan: row.get(1).expect("missing dvlan"),
-                    proto: row.get(2).expect("missing proto"),
+                    observe: row.get(0)?,
+                    vlan: row.get(1)?,
+                    proto: row.get(2)?,
                 })
             })
-            .expect("query map");
+            .map_err(|e| {
+                Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e))
+            })?;
 
         let mut distinct_observation: Vec<DistinctObservation> = Vec::new();
         for record in record_iter {
-            distinct_observation.push(record.expect("unwrapping DistinctObservation"));
+            distinct_observation.push(record.map_err(|e| {
+                Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e))
+            })?);
         }
 
         let mut distinct_models = HashMap::new();
@@ -233,6 +248,7 @@ impl HbosProcessor {
                 medium: 0.0,
                 high: 0.0,
                 severe: 0.0,
+                critical: 0.0,
             };
 
             let _ = model.deserialize(&mut model_conn);
@@ -294,13 +310,7 @@ impl FileProcessor for HbosProcessor {
         true
     }
     fn process(&mut self, file_list: &Vec<String>) -> Result<(), Error> {
-        // Use iterator and join for file list formatting
-        let parquet_list = file_list
-            .iter()
-            .map(|file| format!("'{}'", file))
-            .collect::<Vec<_>>()
-            .join(",");
-        let parquet_list = format!("[{}]", parquet_list);
+        let parquet_list = format_parquet_list(file_list);
 
         // Check if the parquet files are valid
         // If not, skip processing
@@ -326,28 +336,17 @@ impl FileProcessor for HbosProcessor {
             return Ok(());
         }
 
-        let current_utc: DateTime<Utc> = Utc::now();
-        let rfc3339_name: String = current_utc.to_rfc3339();
-        // Sanitize rfc3339_name for filesystem safety
-        let safe_rfc3339 = rfc3339_name.replace(":", "-");
-        let tmp_filename = format!(
-            "{}/.gnat_{}-{}.parquet",
-            self.output_list[0], self.command, safe_rfc3339
-        );
-        let final_filename = format!(
-            "{}/gnat_{}-{}.parquet",
-            self.output_list[0], self.command, safe_rfc3339
-        );
+        let (tmp_filename, final_filename) = create_output_filenames(&self.output_list[0], &self.command);
 
         let mut db_conn = duckdb_open_memory(1)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
 
         db_conn
-            .execute_batch("CREATE TABLE score_table (id UUID, hbos_score DOUBLE, hbos_severity UTINYINT);").        
-        map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
+            .execute_batch(queries::CREATE_SCORE_TABLE)
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
         db_conn
-            .execute_batch("CREATE TABLE hbos_map_table (id UUID,risk_list VARCHAR[],hbos_map map(VARCHAR,DOUBLE));")
-                .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
+            .execute_batch(queries::CREATE_HBOS_MAP_TABLE)
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
         let sql_command = format!(
             "CREATE TABLE flow AS SELECT * FROM read_parquet({});",
             parquet_list
@@ -358,15 +357,15 @@ impl FileProcessor for HbosProcessor {
 
         println!("{}: determining observation points...", self.command);
         let mut stmt = db_conn
-            .prepare(PARQUET_DISTINCT_OBSERVATIONS)
+            .prepare(queries::PARQUET_DISTINCT_OBSERVATIONS)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
 
         let record_iter = stmt
             .query_map([], |row| {
                 Ok(DistinctObservation {
-                    observe: row.get(0).expect("missing value"),
-                    vlan: row.get(1).expect("missing dvlan"),
-                    proto: row.get(2).expect("missing proto"),
+                    observe: row.get(0)?,
+                    vlan: row.get(1)?,
+                    proto: row.get(2)?,
                 })
             })
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
@@ -402,17 +401,8 @@ impl FileProcessor for HbosProcessor {
         // Update the flow table with the hbos scores and severity
         //
         println!("{}: updating records...", self.command);
-        let sql_transform_command = format!(
-            "UPDATE flow 
-                SET hbos_score = score_table.hbos_score, hbos_severity = score_table.hbos_severity
-                FROM score_table WHERE flow.id = score_table.id;
-            UPDATE flow 
-                SET hbos_map = hbos_map_table.hbos_map, ndpi_risk_list = hbos_map_table.risk_list 
-                FROM hbos_map_table WHERE flow.id = hbos_map_table.id;"
-        );
-
         db_conn
-            .execute_batch(&sql_transform_command)
+            .execute_batch(queries::UPDATE_FLOW_WITH_SCORES)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
 
         //

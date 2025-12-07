@@ -104,7 +104,8 @@ pub static HBOS_SUMMARY: &str = "CREATE TABLE IF NOT EXISTS hbos_summary
     low FLOAT,
     medium FLOAT,
     high FLOAT,
-    severe FLOAT
+    severe FLOAT,
+    critical FLOAT
 );";
 
 

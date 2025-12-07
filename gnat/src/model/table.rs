@@ -46,6 +46,7 @@ pub struct HbosSummaryRecord {
     pub medium: f64,
     pub high: f64,
     pub severe: f64,
+    pub critical: f64,
 }
 
 #[derive(Debug)]

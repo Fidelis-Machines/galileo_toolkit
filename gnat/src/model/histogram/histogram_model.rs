@@ -23,9 +23,8 @@ use crate::model::table::DistinctObserveRecord;
 use crate::model::table::HbosSummaryRecord;
 use crate::model::table::MemFlowRecord;
 use crate::utils::duckdb::duckdb_open;
-use chrono::Datelike;
 use chrono::{DateTime, Utc};
-use duckdb::{Appender, DropBehavior};
+use duckdb::Appender;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -45,6 +44,7 @@ impl Drop for DbFileRemover {
 use std::io::Error;
 use std::path::Path;
 
+#[allow(dead_code)]
 enum Severity {
     None = 0,
     Low = 1,
@@ -68,6 +68,7 @@ pub struct HistogramModels {
     pub medium: f64,
     pub high: f64,
     pub severe: f64,
+    pub critical: f64,
 }
 
 impl HistogramModels {
@@ -194,6 +195,7 @@ impl HistogramModels {
                     medium: row.get(12).expect("missing med"),
                     high: row.get(13).expect("missing high"),
                     severe: row.get(14).expect("missing severe"),
+                    critical: row.get(15).expect("missing critical"),
                 })
             })
             .expect("HbosSummaryRecord");
@@ -202,7 +204,7 @@ impl HistogramModels {
         self.medium = hbos_summary.medium;
         self.high = hbos_summary.high;
         self.severe = hbos_summary.severe;
-
+        self.critical = hbos_summary.critical;
         Ok(())
     }
 
@@ -557,7 +559,10 @@ impl HistogramModels {
             hbos_map.push_str("])");
 
             flow_record.hbos_score = hbos_score;
-            flow_record.hbos_severity = if flow_record.hbos_score >= self.severe {
+            flow_record.hbos_severity = if flow_record.hbos_score >= self.critical {
+                Severity::Critical as u8
+            }
+            else if flow_record.hbos_score >= self.severe {
                 Severity::Severe as u8
             } else if flow_record.hbos_score >= self.high {
                 Severity::High as u8
@@ -626,7 +631,7 @@ impl HistogramModels {
         Ok(count)
     }
 
-    fn get_histogram_severity_levels(&self, db_conn: &mut Connection) -> (f64, f64, f64, f64) {
+    fn get_histogram_severity_levels(&self, db_conn: &mut Connection) -> (f64, f64, f64, f64, f64) {
         //
         // generate histogram of HBOS scores
         //
@@ -656,6 +661,7 @@ impl HistogramModels {
         let mut medium = 0.0;
         let mut high = 0.0;
         let mut severe = 0.0;
+        let mut critical = 0.0;
         let mut max = 0.0;
         {
             let mut stmt = db_conn
@@ -674,12 +680,13 @@ impl HistogramModels {
                 low = medium;
                 medium = high;
                 high = severe;
-                severe = max;
+                severe = critical;
+                critical = boundary;
                 max = boundary;
             }
         }
 
-        (low, medium, high, severe)
+        (low, medium, high, severe, critical)
     }
     pub fn summarize(
         &mut self,
@@ -845,7 +852,7 @@ impl HistogramModels {
         // generate histogram summary
         //
         println!("\tsummarizing...");
-        let (low, medium, high, severe) = self.get_histogram_severity_levels(&mut score_conn);
+        let (low, medium, high, severe, critical) = self.get_histogram_severity_levels(&mut score_conn);
         let mut stmt = score_conn
             .prepare(
                 "SELECT min(score),max(score),skewness(score),avg(score),stddev_pop(score),
@@ -871,6 +878,7 @@ impl HistogramModels {
                     medium: medium,
                     high: high,
                     severe: severe,
+                    critical: critical,
                 })
             })
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
@@ -886,14 +894,15 @@ impl HistogramModels {
         }
 
         println!(
-            "[{}/{}/{}] [{}<low,{}<medium,{}<high,{}<severe]",
+            "[{}/{}/{}] [{}<low,{}<medium,{}<high,{}<severe,{}<critical]",
             hbos_summary.observe,
             hbos_summary.vlan,
             hbos_summary.proto,
             hbos_summary.low,
             hbos_summary.medium,
             hbos_summary.high,
-            hbos_summary.severe
+            hbos_summary.severe,
+            hbos_summary.critical
         );
 
         let _ = sink_conn
@@ -920,6 +929,7 @@ impl HistogramModels {
                 hbos_summary.medium,
                 hbos_summary.high,
                 hbos_summary.severe,
+                hbos_summary.critical,
             ])
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
         let _ = appender.flush();
@@ -941,14 +951,14 @@ impl HistogramModels {
             path: db_input_file.clone().into(),
         };
 
-        let mut conn = duckdb_open(&db_input_file, 2)?;
+        let conn = duckdb_open(&db_input_file, 2)?;
 
         let sql_command = format!(
-            "CREATE OR REPLACE TABLE flow AS (SELECT * FROM read_parquet({}) 
+            "CREATE OR REPLACE TABLE flow AS (SELECT * FROM read_parquet({})
              WHERE observe='{}' AND dvlan = {} AND proto='{}');",
             parquet_list, self.observe, self.vlan, self.proto
         );
-        let mut stmt = conn.execute_batch(&sql_command)?;
+        let _stmt = conn.execute_batch(&sql_command)?;
 
         for feature in feature_list {
             match feature.as_str() {

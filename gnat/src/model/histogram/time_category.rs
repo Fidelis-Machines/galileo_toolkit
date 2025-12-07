@@ -14,7 +14,6 @@ use crate::model::table::TimeCategoryRecord;
 use crate::model::table::{HistogramSummaryTable, TimeHistogramTable};
 use chrono::prelude::*;
 use chrono::{TimeZone, Utc};
-use std::fmt::format;
 use std::io::Error;
 
 use duckdb::{params, Appender, Connection, DropBehavior};

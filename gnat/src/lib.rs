@@ -6,12 +6,17 @@
  *  See license information in LICENSE.
  */
 
+pub mod error;
+pub mod config;
+pub mod sql;
+
 pub mod ipfix {
     pub mod libfixbuf;
 }
 
 pub mod utils {
     pub mod duckdb;
+    pub mod common;
 }
 
 pub mod model {
@@ -21,6 +26,8 @@ pub mod model {
 
 pub mod pipeline {
     use crate::utils::duckdb::duckdb_open_memory;
+    use crate::utils::common::parse_options_safe;
+    use crate::config::GnatConfig;
     use chrono::DateTime;
     use chrono::Datelike;
     use chrono::Timelike;
@@ -33,12 +40,13 @@ pub mod pipeline {
     use std::fs;
     use std::io::Error;
     use std::path::Path;
-    use std::process;
     use std::thread;
     use std::time::Duration;
     use std::time::Instant;
 
-    const MAX_BATCH: usize = 1024;
+    fn get_max_batch() -> usize {
+        GnatConfig::default().max_batch_size
+    }
 
     pub mod intel;
     pub mod cache;
@@ -145,6 +153,7 @@ pub mod pipeline {
         WEEK,
     }
 
+    #[allow(non_camel_case_types)]
     #[derive(Debug, Clone, PartialEq)]
     pub enum FileType {
         UNKNOWN,
@@ -177,18 +186,32 @@ pub mod pipeline {
         }
     }
     pub fn parse_options(options_string: &str) -> HashMap<&str, &str> {
-        if options_string.is_empty() {
-            let options: HashMap<&str, &str> = HashMap::new();
-            return options;
+        // Legacy function - converts Result to old format for backward compatibility
+        match parse_options_safe(options_string) {
+            Ok(_map) => {
+                // Convert HashMap<String, String> to HashMap<&str, &str>
+                // This is a temporary workaround - callers should migrate to parse_options_safe
+                if options_string.is_empty() {
+                    HashMap::new()
+                } else {
+                    options_string
+                        .split(";")
+                        .filter_map(|s| {
+                            let parts: Vec<&str> = s.splitn(2, '=').collect();
+                            if parts.len() == 2 {
+                                Some((parts[0], parts[1]))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect()
+                }
+            }
+            Err(_) => {
+                eprintln!("Warning: Failed to parse options, returning empty map");
+                HashMap::new()
+            }
         }
-
-        let options: HashMap<&str, &str> = options_string
-            .split(";")
-            .map(|s| s.split_at(s.find("=").expect("error: missing option(s)")))
-            .map(|(key, val)| (key, &val[1..]))
-            .collect();
-
-        options
     }
     fn sleep_interval(interval: &Interval) -> bool {
         let last = Utc::now();
@@ -230,6 +253,7 @@ pub mod pipeline {
         }
     }
 
+    #[allow(dead_code)]
     fn check_and_update_schema(file_list: &Vec<String>) -> Result<(), Error> {
         if file_list[0].ends_with(".yaf") {
             return Ok(());
@@ -346,8 +370,8 @@ pub mod pipeline {
         }
         fn export_parquet(
             &mut self,
-            parquet_list: String,
-            output_list: &Vec<String>,
+            _parquet_list: String,
+            _output_list: &Vec<String>,
         ) -> Result<(), Error> {
             Ok(())
         }
@@ -432,7 +456,7 @@ pub mod pipeline {
                         }
                     }
                     // batch up to MAX_BATCH -- limit the number of files process at once
-                    if file_list.len() >= MAX_BATCH {
+                    if file_list.len() >= get_max_batch() {
                         break;
                     }
                 }
@@ -465,7 +489,7 @@ pub mod pipeline {
                     }
                 }
                 total_files_processed += file_list.len();
-                if file_list.len() < MAX_BATCH {
+                if file_list.len() < get_max_batch() {
                     break;
                 }
             }
@@ -489,7 +513,7 @@ pub mod pipeline {
             //
             let _ = env::set_current_dir(&input_list[0])?;
             println!(
-                "{}: pwd spec: {:?}",
+                "{}: pwd spec: [{:?}]",
                 command,
                 env::current_dir().unwrap().display()
             );

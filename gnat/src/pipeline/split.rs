@@ -18,7 +18,6 @@ use crate::pipeline::parse_interval;
 use crate::pipeline::parse_options;
 use crate::pipeline::FileProcessor;
 use crate::pipeline::Interval;
-use duckdb::params;
 use std::io::Error;
 
 #[derive(Clone, Serialize, Deserialize)]

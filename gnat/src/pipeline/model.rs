@@ -13,8 +13,6 @@ use crate::model::histogram::numeric_category::NumericCategoryHistogram;
 use crate::model::histogram::string_category::StringCategoryHistogram;
 use crate::model::histogram::time_category::TimeCategoryHistogram;
 use crate::model::histogram::MINIMUM_DAYS;
-
-use crate::model::histogram::PARQUET_DISTINCT_OBSERVATIONS;
 use crate::model::table::DistinctObservation;
 use crate::pipeline::check_parquet_stream;
 use crate::pipeline::load_environment;
@@ -24,14 +22,13 @@ use crate::pipeline::use_motherduck;
 use crate::pipeline::FileProcessor;
 use crate::pipeline::Interval;
 use crate::pipeline::StreamType;
-use crate::utils::duckdb::{duckdb_open, duckdb_open_memory};
+use crate::utils::duckdb::duckdb_open;
+use crate::utils::common::format_parquet_list;
 use chrono::Datelike;
 use chrono::{DateTime, Utc};
 use duckdb::Connection;
 use file_lock::{FileLock, FileOptions};
 use std::fs;
-use std::fs::OpenOptions;
-use std::io::prelude::*;
 use std::path::PathBuf;
 
 use std::collections::HashMap;
@@ -103,7 +100,7 @@ impl ModelProcessor {
         let features = options.get("features").expect("expected feature list");
         let feature_list: Vec<String> = features.split(",").map(str::to_string).collect();
 
-        let mut protocols = options
+        let protocols = options
             .get("proto")
             .expect("expected proto list")
             .to_string();
@@ -189,7 +186,7 @@ impl FileProcessor for ModelProcessor {
         *input_list = self.input_list.clone();
         Ok(())
     }
-    fn get_output(&self, output_list: &mut Vec<String>) -> Result<(), Error> {
+    fn get_output(&self, _output_list: &mut Vec<String>) -> Result<(), Error> {
         //*output_list = self.model_list.clone();
         Ok(())
     }
@@ -214,9 +211,9 @@ impl FileProcessor for ModelProcessor {
     fn process(&mut self, file_list: &Vec<String>) -> Result<(), Error> {
         let lock_filename = format!("{}/.lock", self.input_list[0]);
         let options = FileOptions::new().write(true).create(true).append(true);
-        let mut file_lock = match FileLock::lock(&lock_filename, false, options) {
+        let _file_lock = match FileLock::lock(&lock_filename, false, options) {
             Ok(lock) => lock,
-            Err(err) => {
+            Err(_err) => {
                 println!(
                     "{}: unable to acquire lock for {} -- skipping.",
                     self.command, lock_filename
@@ -225,13 +222,7 @@ impl FileProcessor for ModelProcessor {
             }
         };
 
-        // Use iterator and join for file list formatting
-        let parquet_list = file_list
-            .iter()
-            .map(|file| format!("'{}'", file))
-            .collect::<Vec<_>>()
-            .join(",");
-        let parquet_list = format!("[{}]", parquet_list);
+        let parquet_list = format_parquet_list(file_list);
 
         // Check if the parquet files are valid
         // If not, skip processing
@@ -287,7 +278,7 @@ impl FileProcessor for ModelProcessor {
         let _tmp_remove = DbFileRemover {
             path: tmp_input.clone().into(),
         };
-        let mut db_input = duckdb_open(&tmp_input, 1)
+        let db_input = duckdb_open(&tmp_input, 1)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
 
         // check the number of days in the dataset
@@ -316,13 +307,13 @@ impl FileProcessor for ModelProcessor {
         }
 
         println!(
-            "{}: modeling {} days of sampled data...",
+            "{}: modeling with {} days of sampled data...",
             self.command, days
         );
         // load observation list
         println!("{}: determining observation points...", self.command);
         let sql_distinct = format!(
-            "SELECT DISTINCT observe, dvlan, proto FROM read_parquet({}) GROUP BY ALL ORDER BY ALL;",parquet_list
+            "SELECT DISTINCT observe, dvlan, proto FROM read_parquet({}) GROUP BY ALL ORDER BY ALL;", parquet_list
         );
         let mut stmt = db_input
             .prepare(&sql_distinct)
@@ -330,9 +321,9 @@ impl FileProcessor for ModelProcessor {
         let record_iter = stmt
             .query_map([], |row| {
                 Ok(DistinctObservation {
-                    observe: row.get(0).expect("missing value"),
-                    vlan: row.get(1).expect("missing dvlan"),
-                    proto: row.get(2).expect("missing proto"),
+                    observe: row.get(0)?,
+                    vlan: row.get(1)?,
+                    proto: row.get(2)?,
                 })
             })
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
@@ -388,6 +379,7 @@ impl FileProcessor for ModelProcessor {
                 medium: 0.0,
                 high: 0.0,
                 severe: 0.0,
+                critical: 0.0,
             };
             let _ = model
                 .build(&parquet_list, &self.feature_list)

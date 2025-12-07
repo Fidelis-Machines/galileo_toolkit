@@ -7,16 +7,15 @@
  */
 
 use crate::pipeline::FIELDS;
-use crate::utils::duckdb::duckdb_open_memory;
-use chrono::{DateTime, Utc};
 
-use crate::pipeline::check_parquet_stream;
-use crate::pipeline::load_environment;
+use crate::pipeline::{check_parquet_stream, load_environment};
 use crate::pipeline::parse_interval;
 use crate::pipeline::parse_options;
 use crate::pipeline::FileProcessor;
 use crate::pipeline::Interval;
 use crate::pipeline::StreamType;
+use crate::utils::duckdb::duckdb_open_memory;
+use chrono::{DateTime, Utc};
 use std::io::Error;
 
 pub struct ExportProcessor {
@@ -70,7 +69,7 @@ impl ExportProcessor {
 
         let field_list = options.get("fields").expect("expected format");
 
-        let mut list: Vec<String> = Vec::new();
+        let mut list = Vec::<String>::new();
         if !field_list.is_empty() && *field_list != "*" {
             list = field_list.split(",").map(str::to_string).collect();
             for field in &list {

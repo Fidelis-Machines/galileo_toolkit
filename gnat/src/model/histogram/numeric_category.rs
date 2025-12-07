@@ -16,7 +16,6 @@ use std::io::Error;
 use crate::model::table::MemFlowRecord;
 use duckdb::{params, Appender, Connection, DropBehavior};
 use std::collections::HashMap;
-use std::fmt::format;
 
 #[derive(Debug)]
 pub struct NumericCategoryHistogram {

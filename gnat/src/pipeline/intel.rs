@@ -6,24 +6,23 @@
  * See license information in LICENSE.
  */
 
-use crate::model::table::CREATE_ABUSE_TABLE;
 use crate::pipeline::check_parquet_stream;
 use crate::pipeline::load_environment;
 use crate::pipeline::parse_interval;
 use crate::pipeline::parse_options;
-use crate::pipeline::use_motherduck;
 use crate::pipeline::FileProcessor;
 use crate::pipeline::Interval;
 use crate::pipeline::StreamType;
-use crate::utils::duckdb::{duckdb_open, duckdb_open_memory};
+use crate::utils::duckdb::duckdb_open;
+use crate::utils::common::format_parquet_list;
+use crate::sql::queries;
 use chrono::prelude::*;
-use chrono::{Duration, TimeZone, Utc};
+use chrono::{Duration, Utc};
 use duckdb::params;
 use duckdb::Appender;
-use duckdb::{Connection, DropBehavior};
+use duckdb::Connection;
 use serde::Deserialize;
 use serde_with::{serde_as, DefaultOnNull};
-use std::fs;
 use std::io::Error;
 
 use reqwest::blocking::Client;
@@ -81,7 +80,7 @@ pub struct ThreatIntelProcessor {
     pub pass: String,
     pub interval: Interval,
     pub extension: String,
-    pub severity: u8,
+    pub threshold: u8,
     pub abuse_url: String,
     pub abuse_key: String,
     pub db_conn: Connection,
@@ -104,23 +103,23 @@ impl ThreatIntelProcessor {
         options
             .entry("abuse_url")
             .or_insert("https://api.abuseipdb.com/api/v2/check");
-        options.entry("severity").or_insert("3"); // default severity level high (3)
+        options.entry("threshold").or_insert("4"); // default severity level severe (4)
         for (key, value) in &options {
             if !value.is_empty() {
                 println!("{}: [{}={}]", command, key, value);
             }
         }
 
-        let severity = options
-            .get("severity")
-            .expect("expected severity")
+        let threshold = options
+            .get("threshold")
+            .expect("expected threshold")
             .parse::<u8>()
             .unwrap();
-        
-        if severity > 5 || severity < 1 {
+
+        if threshold > 5 || threshold < 1 {
             return Err(Error::new(
                 std::io::ErrorKind::Other,
-                format!("invalid severity level {}", severity),
+                format!("invalid threshold level {}", threshold),
             ));
         }
 
@@ -129,13 +128,13 @@ impl ThreatIntelProcessor {
             .get("abuse_url")
             .expect("expected abuse_url")
             .to_string();
-        let mut cache_file = options.get("cache").expect("expected db").to_string();
+        let cache_file = options.get("cache").expect("expected db").to_string();
 
-        let mut db_conn = duckdb_open(&cache_file, 1)
+        let db_conn = duckdb_open(&cache_file, 1)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
-        let _ = db_conn
-            .execute_batch(CREATE_ABUSE_TABLE)
-            .expect("execute_batch");
+        db_conn
+            .execute_batch(queries::CREATE_ABUSE_TABLE)
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
         println!("{}: cache [{}]", command, cache_file);
 
         let mut input_list = Vec::<String>::new();
@@ -150,7 +149,7 @@ impl ThreatIntelProcessor {
             pass: pass.to_string(),
             interval: interval,
             extension: extension_string.to_string(),
-            severity: severity,
+            threshold: threshold,
             abuse_url: abuse_url,
             abuse_key: abuse_key,
             db_conn: db_conn,
@@ -202,8 +201,7 @@ impl ThreatIntelProcessor {
         // Data for URL encoding
         let mut params = HashMap::new();
         params.insert("ipAddress", ipAddress);
-        params.insert("maxAgeInDays", "90");
-        //params.insert("verbose", "true");
+        params.insert("maxAgeInDays", "30");
         // Manually encode parameters for the query string
         let query_string: String = params
             .iter()
@@ -270,7 +268,7 @@ impl ThreatIntelProcessor {
                 })?;
         } else {
             if status_code_number == 429 {
-                eprintln!("gnat_intel: Rate limit exceeded for AbuseIPDB API.");              
+                eprintln!("gnat_intel: Rate limit exceeded for AbuseIPDB API.");
                 return Ok(status_code_number);
             } else {
                 eprintln!("Error: {}", response.status());
@@ -292,20 +290,18 @@ impl ThreatIntelProcessor {
         //
         // look up ip addresses not in cache
         //
-        let sql_command = format!(
-            "SELECT daddr AS ipAddress FROM read_parquet({}) WHERE (trigger > 0) AND (hbos_severity >= {}) AND (dasnorg !='private') EXCEPT SELECT ipAddress FROM abuse;",
-            parquet_list, self.severity
-        );
-        let mut stmt = self.db_conn.prepare(sql_command.as_str()).map_err(|e| {
-            Error::new(
-                std::io::ErrorKind::Other,
-                format!("sql prepare error: {}", e),
-            )
-        })?;
+        let mut stmt = self.db_conn
+            .prepare(queries::SELECT_IPS_NOT_IN_CACHE)
+            .map_err(|e| {
+                Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("sql prepare error: {}", e),
+                )
+            })?;
         let record_iter = stmt
-            .query_map([], |row| {
+            .query_map(params![parquet_list, self.threshold], |row| {
                 Ok(IpAddressRecord {
-                    ipAddress: row.get(0).expect("missing value"),
+                    ipAddress: row.get(0)?,
                 })
             })
             .map_err(|e| {
@@ -343,23 +339,19 @@ impl ThreatIntelProcessor {
         //
         // export records joined with flow data to parquet
         //
-        let sql_export_parquet = format!(
-            "COPY (SELECT *, year(cachedAt) AS year, month(cachedAt) AS month, day(cachedAt) as day FROM abuse)
-             TO '{}' (PARTITION_BY (year, month, day), FORMAT 'parquet', OVERWRITE_OR_IGNORE TRUE);",
-            self.output_list[0]
-        );
         println!("{}: exporting", self.command);
-        self.db_conn
-            .execute_batch(&sql_export_parquet)
+        let mut stmt = self.db_conn
+            .prepare(queries::EXPORT_ABUSE_DATA)
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
+        stmt.execute(params![&self.output_list[0]])
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
 
         //
         // expunge cache of records older than 24 hours
         //
         println!("{}: updating cache", self.command);
-        let mut stmt = self
-            .db_conn
-            .execute_batch("DELETE FROM abuse WHERE cachedAt < NOW() - INTERVAL 24 HOUR;")
+        self.db_conn
+            .execute_batch(queries::DELETE_OLD_CACHE_ENTRIES)
             .map_err(|e| {
                 Error::new(
                     std::io::ErrorKind::Other,
@@ -403,12 +395,7 @@ impl FileProcessor for ThreatIntelProcessor {
     }
 
     fn process(&mut self, file_list: &Vec<String>) -> Result<(), Error> {
-        let parquet_list = file_list
-            .iter()
-            .map(|file| format!("'{}'", file))
-            .collect::<Vec<_>>()
-            .join(",");
-        let parquet_list = format!("[{}]", parquet_list);
+        let parquet_list = format_parquet_list(file_list);
         // Check if the parquet files are valid
         // If not, skip processing
         // This is a performance optimization to avoid processing invalid files
@@ -431,9 +418,8 @@ impl FileProcessor for ThreatIntelProcessor {
             );
             return Ok(());
         }
-
+        println!("{}: processing...", self.command);
         self.abusedb_export(&parquet_list)?;
-
         println!("{}: done.", self.command);
         Ok(())
     }

@@ -13,7 +13,6 @@ use crate::model::table::StringCategoryRecord;
 use crate::model::table::{HistogramSummaryTable, StringHistogramTable};
 use duckdb::{params, Appender, Connection, DropBehavior};
 use std::collections::HashMap;
-use std::fmt::format;
 use std::io::Error;
 
 #[derive(Debug)]

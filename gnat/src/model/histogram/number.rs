@@ -13,7 +13,6 @@ use crate::model::table::MemFlowRecord;
 use crate::model::table::{HistogramSummaryTable, NumericHistogramTable};
 use crate::pipeline::TCP_FILTER;
 use duckdb::{params, Appender, Connection, DropBehavior};
-use std::fmt::format;
 use std::io::Error;
 
 #[derive(Debug)]

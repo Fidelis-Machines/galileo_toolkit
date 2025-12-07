@@ -236,7 +236,7 @@ impl StoreProcessor {
 
         // Get current time for file naming
         let current_utc: DateTime<Utc> = Utc::now();
-        let mut push_time: String = current_utc.to_string();
+        let push_time: String = current_utc.to_string();
         //let mut push_time: String = current_utc.to_rfc3339().replace(":", "-");
         //push_time = push_time.replace("+", "_");
 

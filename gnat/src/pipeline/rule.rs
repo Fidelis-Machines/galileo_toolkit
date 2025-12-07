@@ -12,15 +12,14 @@ use crate::model::histogram::number::NumberHistogram;
 use crate::model::histogram::numeric_category::NumericCategoryHistogram;
 use crate::model::histogram::string_category::StringCategoryHistogram;
 use crate::model::histogram::time_category::TimeCategoryHistogram;
-use crate::model::histogram::{MODEL_DISTINCT_OBSERVATIONS, PARQUET_DISTINCT_OBSERVATIONS};
 use crate::model::table::DistinctObservation;
 
 use crate::pipeline::check_parquet_stream;
 use crate::pipeline::load_environment;
-
 use crate::pipeline::StreamType;
 use crate::utils::duckdb::{duckdb_open_memory, duckdb_open_readonly};
-use chrono::{DateTime, Utc};
+use crate::utils::common::{format_parquet_list, create_output_filenames};
+use crate::sql::queries;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -155,7 +154,7 @@ impl RuleProcessor {
         let mut model_conn = duckdb_open_readonly(&self.model_spec, 1)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
         let mut stmt = model_conn
-            .prepare(MODEL_DISTINCT_OBSERVATIONS)
+            .prepare(queries::MODEL_DISTINCT_OBSERVATIONS)
             .map_err(|e| {
                 Error::new(
                     std::io::ErrorKind::Other,
@@ -166,9 +165,9 @@ impl RuleProcessor {
         let record_iter = stmt
             .query_map([], |row| {
                 Ok(DistinctObservation {
-                    observe: row.get(0).expect("missing value"),
-                    vlan: row.get(1).expect("missing dvlan"),
-                    proto: row.get(2).expect("missing proto"),
+                    observe: row.get(0)?,
+                    vlan: row.get(1)?,
+                    proto: row.get(2)?,
                 })
             })
             .map_err(|e| {
@@ -180,7 +179,9 @@ impl RuleProcessor {
 
         let mut distinct_observation: Vec<DistinctObservation> = Vec::new();
         for record in record_iter {
-            distinct_observation.push(record.expect("unwrapping DistinctObservation"));
+            distinct_observation.push(record.map_err(|e| {
+                Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e))
+            })?);
         }
 
         let mut distinct_models = HashMap::new();
@@ -207,12 +208,13 @@ impl RuleProcessor {
                 medium: 0.0,
                 high: 0.0,
                 severe: 0.0,
+                critical: 0.0,
             };
 
             let _ = model.deserialize(&mut model_conn);
             println!(
-                "{}: low={}, medium={}, high={}, severe={}",
-                self.command, model.low, model.medium, model.high, model.severe
+                "{}: low={}, medium={}, high={}, severe={}, critical={}",
+                self.command, model.low, model.medium, model.high, model.severe, model.critical
             );
             let _ = distinct_models.insert(distinct_key, model);
         }
@@ -560,13 +562,7 @@ impl FileProcessor for RuleProcessor {
         true
     }
     fn process(&mut self, file_list: &Vec<String>) -> Result<(), Error> {
-        // Use iterator and join for file list formatting
-        let parquet_list = file_list
-            .iter()
-            .map(|file| format!("'{}'", file))
-            .collect::<Vec<_>>()
-            .join(",");
-        let parquet_list = format!("[{}]", parquet_list);
+        let parquet_list = format_parquet_list(file_list);
 
         // Check if the parquet files are valid
         // If not, skip processing
@@ -591,21 +587,8 @@ impl FileProcessor for RuleProcessor {
             return Ok(());
         }
 
-        let current_utc: DateTime<Utc> = Utc::now();
-        let rfc3339_name: String = current_utc.to_rfc3339();
-
-        let tmp_parquet_filename = format!(
-            "{}/.gnat-{}-{}.parquet",
-            self.output_list[0],
-            self.command,
-            rfc3339_name.replace(":", "-")
-        );
-        let parquet_filename = format!(
-            "{}/gnat-{}-{}.parquet",
-            self.output_list[0],
-            self.command,
-            rfc3339_name.replace(":", "-")
-        );
+        let (tmp_parquet_filename, parquet_filename) =
+            create_output_filenames(&self.output_list[0], &self.command);
 
         let mut db_in = duckdb_open_memory(2)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;

@@ -6,7 +6,6 @@
  * See license information in LICENSE.
  */
 
-use crate::model::histogram::MINIMUM_DAYS;
 use crate::model::table::DistinctObservation;
 use crate::pipeline::load_environment;
 use crate::pipeline::parse_interval;
@@ -21,8 +20,6 @@ use crate::utils::duckdb::duckdb_open_memory;
 use chrono::{DateTime, Utc};
 use file_lock::{FileLock, FileOptions};
 use std::fs;
-use std::fs::OpenOptions;
-use std::io::prelude::*;
 use std::io::Error;
 use std::path::Path;
 
@@ -332,9 +329,9 @@ impl FileProcessor for SampleProcessor {
                 
         let lock_filename = format!("{}/.lock", self.output_list[0]);
         let options = FileOptions::new().write(true).create(true).append(true);
-        let mut file_lock = match FileLock::lock(&lock_filename, false, options) {
+        let _file_lock = match FileLock::lock(&lock_filename, false, options) {
             Ok(lock) => lock,
-            Err(err) => {
+            Err(_err) => {
                 println!("{}: unable to acquire lock for {} -- skipping.", self.command, lock_filename);
                 return Ok(());
             }

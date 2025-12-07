@@ -22,10 +22,7 @@ use chrono::DateTime;
 use chrono::Utc;
 use duckdb::Connection;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::fs;
 use std::io::Error;
-use std::path::Path;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct InputJsonStructure {
@@ -102,12 +99,12 @@ impl CacheProcessor {
         Ok(())
     }
 
-    fn consume(&mut self, parquet_list: &str, output_list: &Vec<String>) -> Result<i64, Error> {
+    fn consume(&mut self, parquet_list: &str, _output_list: &Vec<String>) -> Result<i64, Error> {
         let command = self.get_command().clone();
         let current_utc: DateTime<Utc> = Utc::now();
         let rfc3339_name: String = current_utc.to_rfc3339();
         // Sanitize rfc3339_name for filesystem safety
-        let safe_rfc3339 = rfc3339_name.replace(":", "-");
+        let _safe_rfc3339 = rfc3339_name.replace(":", "-");
         let mut record_count: i64 = 0;
 
         let sql_count = format!("SELECT COUNT(*) FROM read_parquet({});", parquet_list);
