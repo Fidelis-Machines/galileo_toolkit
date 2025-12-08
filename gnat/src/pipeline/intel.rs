@@ -13,9 +13,9 @@ use crate::pipeline::parse_options;
 use crate::pipeline::FileProcessor;
 use crate::pipeline::Interval;
 use crate::pipeline::StreamType;
-use crate::utils::duckdb::duckdb_open;
-use crate::utils::common::format_parquet_list;
 use crate::sql::queries;
+use crate::utils::common::format_parquet_list;
+use crate::utils::duckdb::duckdb_open;
 use chrono::prelude::*;
 use chrono::{Duration, Utc};
 use duckdb::params;
@@ -290,8 +290,17 @@ impl ThreatIntelProcessor {
         //
         // look up ip addresses not in cache
         //
-        let mut stmt = self.db_conn
-            .prepare(queries::SELECT_IPS_NOT_IN_CACHE)
+
+        let sql_command = format!(
+            "SELECT daddr AS ipAddress FROM read_parquet({})
+             WHERE (trigger > 0) AND (hbos_severity >= {}) AND (dasnorg != 'private')
+             EXCEPT SELECT ipAddress FROM abuse;",
+            parquet_list, self.threshold
+        );
+
+        let mut stmt = self
+            .db_conn
+            .prepare(&sql_command)
             .map_err(|e| {
                 Error::new(
                     std::io::ErrorKind::Other,
@@ -299,7 +308,7 @@ impl ThreatIntelProcessor {
                 )
             })?;
         let record_iter = stmt
-            .query_map(params![parquet_list, self.threshold], |row| {
+            .query_map(params![], |row| {
                 Ok(IpAddressRecord {
                     ipAddress: row.get(0)?,
                 })
@@ -340,7 +349,8 @@ impl ThreatIntelProcessor {
         // export records joined with flow data to parquet
         //
         println!("{}: exporting", self.command);
-        let mut stmt = self.db_conn
+        let mut stmt = self
+            .db_conn
             .prepare(queries::EXPORT_ABUSE_DATA)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
         stmt.execute(params![&self.output_list[0]])
