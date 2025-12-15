@@ -82,9 +82,9 @@ pub const SELECT_DATASET_DAYS: &str =
     "SELECT date_diff('day', first, last) + 1 AS days
      FROM (SELECT MIN(stime) AS first, MAX(stime) AS last FROM read_parquet(?));";
 
-// Abuse DB queries
-pub const CREATE_ABUSE_TABLE: &str =
-    "CREATE TABLE IF NOT EXISTS abuse (
+// Reputation DB queries
+pub const CREATE_REPUTATION_TABLE: &str =
+    "CREATE TABLE IF NOT EXISTS reputation (
         ipAddress VARCHAR,
         isPublic BOOLEAN,
         ipVersion SMALLINT,
@@ -99,17 +99,19 @@ pub const CREATE_ABUSE_TABLE: &str =
         totalReports INTEGER,
         numDistinctUsers INTEGER,
         lastReportedAt VARCHAR,
+        observationPoint VARCHAR,
         cachedAt TIMESTAMP
     );";
 
 pub const SELECT_IPS_NOT_IN_CACHE: &str =
-    "SELECT daddr AS ipAddress FROM read_parquet(?)
+    "SELECT daddr AS ipAddress, observe AS observationPoint FROM read_parquet(?)
      WHERE (trigger > 0) AND (hbos_severity >= ?) AND (dasnorg != 'private')
-     EXCEPT SELECT ipAddress FROM abuse;";
+     AND (daddr, observe) NOT IN (SELECT ipAddress, observationPoint FROM reputation)
+     GROUP BY ALL;";
 
 pub const DELETE_OLD_CACHE_ENTRIES: &str =
-    "DELETE FROM abuse WHERE cachedAt < NOW() - INTERVAL 24 HOUR;";
+    "DELETE FROM reputation WHERE cachedAt < NOW() - INTERVAL 24 HOUR;";
 
-pub const EXPORT_ABUSE_DATA: &str =
-    "COPY (SELECT *, year(cachedAt) AS year, month(cachedAt) AS month, day(cachedAt) AS day FROM abuse)
+pub const EXPORT_REPUTATION_DATA: &str =
+    "COPY (SELECT *, year(cachedAt) AS year, month(cachedAt) AS month, day(cachedAt) AS day FROM reputation)
      TO ? (PARTITION_BY (year, month, day), FORMAT 'parquet', OVERWRITE_OR_IGNORE TRUE);";

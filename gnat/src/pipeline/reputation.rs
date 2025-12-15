@@ -31,9 +31,11 @@ use std::collections::HashMap;
 
 use urlencoding::encode;
 
+#[allow(non_snake_case)]
 #[derive(Debug)]
 struct IpAddressRecord {
     ipAddress: String,
+    observationPoint: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -41,6 +43,7 @@ struct AbuseResponse {
     data: AbuseData,
 }
 
+#[allow(non_snake_case)]
 #[serde_as]
 #[derive(Debug, Deserialize)]
 struct AbuseData {
@@ -133,7 +136,7 @@ impl ThreatIntelProcessor {
         let db_conn = duckdb_open(&cache_file, 1)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
         db_conn
-            .execute_batch(queries::CREATE_ABUSE_TABLE)
+            .execute_batch(queries::CREATE_REPUTATION_TABLE)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
         println!("{}: cache [{}]", command, cache_file);
 
@@ -195,12 +198,13 @@ impl ThreatIntelProcessor {
             Err(_) => false,
         }
     }
-    fn abusedb_api_lookup(&self, appender: &mut Appender, ipAddress: &str) -> Result<u16, Error> {
+
+    fn abusedb_api_lookup(&self, appender: &mut Appender, ip_address: &str, observation_point: &str) -> Result<u16, Error> {
         let client = Client::new();
 
         // Data for URL encoding
         let mut params = HashMap::new();
-        params.insert("ipAddress", ipAddress);
+        params.insert("ipAddress", ip_address);
         params.insert("maxAgeInDays", "30");
         // Manually encode parameters for the query string
         let query_string: String = params
@@ -260,6 +264,7 @@ impl ThreatIntelProcessor {
                     response.data.totalReports,
                     response.data.numDistinctUsers,
                     response.data.lastReportedAt,
+                    observation_point,
                     now.to_rfc3339()
                 ])
                 .map_err(|e| {
@@ -268,7 +273,7 @@ impl ThreatIntelProcessor {
                 })?;
         } else {
             if status_code_number == 429 {
-                eprintln!("gnat_intel: Rate limit exceeded for AbuseIPDB API.");
+                eprintln!("gnat_reputation: Rate limit exceeded for AbuseIPDB API.");
                 return Ok(status_code_number);
             } else {
                 eprintln!("Error: {}", response.status());
@@ -287,51 +292,54 @@ impl ThreatIntelProcessor {
     }
 
     fn abusedb_export(&mut self, parquet_list: &String) -> Result<(), Error> {
+     
+
         //
         // look up ip addresses not in cache
         //
-
         let sql_command = format!(
-            "SELECT daddr AS ipAddress FROM read_parquet({})
+            "SELECT daddr AS ipAddress, observe AS observationPoint FROM read_parquet({})
              WHERE (trigger > 0) AND (hbos_severity >= {}) AND (dasnorg != 'private')
-             EXCEPT SELECT ipAddress FROM abuse;",
+             AND (daddr, observe) NOT IN (SELECT ipAddress, observationPoint FROM reputation)
+             GROUP BY ALL;",
             parquet_list, self.threshold
         );
 
-        let mut stmt = self
-            .db_conn
-            .prepare(&sql_command)
-            .map_err(|e| {
+        // Collect IP addresses to look up into a Vec to release the borrow on db_conn
+        let ip_records: Vec<IpAddressRecord> = {
+            let mut stmt = self.db_conn.prepare(&sql_command).map_err(|e| {
                 Error::new(
                     std::io::ErrorKind::Other,
                     format!("sql prepare error: {}", e),
                 )
             })?;
-        let record_iter = stmt
-            .query_map(params![], |row| {
-                Ok(IpAddressRecord {
-                    ipAddress: row.get(0)?,
+            let record_iter = stmt
+                .query_map(params![], |row| {
+                    Ok(IpAddressRecord {
+                        ipAddress: row.get(0)?,
+                        observationPoint: row.get(1)?,
+                    })
                 })
-            })
-            .map_err(|e| {
-                Error::new(std::io::ErrorKind::Other, format!("query map error: {}", e))
-            })?;
+                .map_err(|e| {
+                    Error::new(std::io::ErrorKind::Other, format!("query map error: {}", e))
+                })?;
+
+            record_iter
+                .filter_map(|r| r.ok())
+                .collect()
+        };
 
         let mut appender: Appender = self
             .db_conn
-            .appender("abuse")
+            .appender("reputation")
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
 
-        for record in record_iter {
-            let record = record.map_err(|e| {
-                Error::new(std::io::ErrorKind::Other, format!("record error: {}", e))
-            })?;
-
-            if (record.ipAddress.is_empty()) || self.is_private_address(&record.ipAddress) {
+        for record in ip_records {
+            if record.ipAddress.is_empty() || self.is_private_address(&record.ipAddress) {
                 continue;
             }
             println!("{}: lookup ip address [{}]", self.command, record.ipAddress);
-            let status_code = self.abusedb_api_lookup(&mut appender, &record.ipAddress)?;
+            let status_code = self.abusedb_api_lookup(&mut appender, &record.ipAddress, &record.observationPoint)?;
             if status_code == 429 {
                 let now: DateTime<Utc> = Utc::now();
                 self.active_date = now + Duration::hours(1);
@@ -345,29 +353,33 @@ impl ThreatIntelProcessor {
         }
         let _ = appender.flush();
         drop(appender);
-        //
-        // export records joined with flow data to parquet
-        //
-        println!("{}: exporting", self.command);
-        let mut stmt = self
-            .db_conn
-            .prepare(queries::EXPORT_ABUSE_DATA)
-            .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
-        stmt.execute(params![&self.output_list[0]])
-            .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
+
 
         //
         // expunge cache of records older than 24 hours
         //
         println!("{}: updating cache", self.command);
+        let delete_and_checkpoint = format!("{} CHECKPOINT;", queries::DELETE_OLD_CACHE_ENTRIES);
         self.db_conn
-            .execute_batch(queries::DELETE_OLD_CACHE_ENTRIES)
+            .execute_batch(&delete_and_checkpoint)
             .map_err(|e| {
                 Error::new(
                     std::io::ErrorKind::Other,
                     format!("sql prepare error: {}", e),
                 )
             })?;
+        println!("{}: synced to disk", self.command);
+
+        //
+        // export records joined with flow data to parquet
+        //
+        println!("{}: exporting", self.command);
+        let mut stmt = self
+            .db_conn
+            .prepare(queries::EXPORT_REPUTATION_DATA)
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
+        stmt.execute(params![&self.output_list[0]])
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
 
         Ok(())
     }
@@ -430,6 +442,12 @@ impl FileProcessor for ThreatIntelProcessor {
         }
         println!("{}: processing...", self.command);
         self.abusedb_export(&parquet_list)?;
+
+        // Ensure database is synced to disk before exiting
+        if let Err(e) = self.db_conn.execute_batch("CHECKPOINT;") {
+            eprintln!("{}: failed to sync database: {}", self.command, e);
+        }
+
         println!("{}: done.", self.command);
         Ok(())
     }

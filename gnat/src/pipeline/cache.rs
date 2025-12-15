@@ -105,14 +105,12 @@ impl CacheProcessor {
         let rfc3339_name: String = current_utc.to_rfc3339();
         // Sanitize rfc3339_name for filesystem safety
         let _safe_rfc3339 = rfc3339_name.replace(":", "-");
-        let mut record_count: i64 = 0;
-
         let sql_count = format!("SELECT COUNT(*) FROM read_parquet({});", parquet_list);
         let mut stmt = self
             .db_conn
             .prepare(&sql_count)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
-        record_count = stmt
+        let record_count: i64 = stmt
             .query_row([], |row| row.get(0))
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
 

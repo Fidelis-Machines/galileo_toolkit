@@ -48,7 +48,7 @@ pub mod pipeline {
         GnatConfig::default().max_batch_size
     }
 
-    pub mod intel;
+    pub mod reputation;
     pub mod cache;
     pub mod collector;
     pub mod export;
@@ -61,8 +61,6 @@ pub mod pipeline {
     pub mod split;
     pub mod store;
     pub mod tag;
-
-    pub static TCP_FILTER: &'static str = " AND (snonemptypktcnt>0 OR dnonemptypktcnt>0);";
 
     static FIELDS: &'static [&'static str] = &[
         "stream",

@@ -35,29 +35,29 @@ use crate::pipeline::Interval;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct RuleJsonStructure {
-    action: String,
+    action: String, // ignore or trigger
     #[serde(default = "default_string")]
-    observe: String,
+    observe: String, // observe domain 
     #[serde(default = "default_string")]
-    proto: String,
+    proto: String, // protocol
     #[serde(default = "default_string")]
-    saddr: String,
+    saddr: String, // source address
     #[serde(default = "default_u16")]
-    sport: u16,
+    sport: u16, // source port
     #[serde(default = "default_string")]
-    daddr: String,
+    daddr: String, // destination address
     #[serde(default = "default_u16")]
-    dport: u16,
+    dport: u16,     // destination port
     #[serde(default = "default_string")]
-    appid: String,
+    appid: String,  // application ID
     #[serde(default = "default_string")]
-    orient: String,
+    orient: String, // flow orientation, 00, 01, 10, 11
     #[serde(default = "default_string")]
-    tag: String,
+    tag: String,    // tags/labels
     #[serde(default = "default_u8")]
-    risk_severity: u8,
+    risk_severity: u8, // NDPI risk severity
     #[serde(default = "default_u8")]
-    hbos_severity: u8,
+    hbos_severity: u8, // HBOS severity
 }
 
 fn default_string() -> String {

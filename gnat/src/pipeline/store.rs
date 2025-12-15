@@ -189,18 +189,17 @@ impl StoreProcessor {
             }
         }
         for parquet_file in file_list.clone().into_iter() {
-            let mut sql_export = String::new();
-            if self.filter.is_empty() {
-                sql_export = format!(
+            let sql_export = if self.filter.is_empty() {
+                format!(
                     "INSERT INTO flow SELECT * FROM read_parquet('{}');",
                     parquet_file
-                );
+                )
             } else {
-                sql_export = format!(
+                format!(
                     "INSERT INTO flow SELECT * FROM read_parquet('{}') WHERE {};",
                     parquet_file, self.filter
-                );
-            }
+                )
+            };
             let _ = self.db_conn.execute_batch(&sql_export).map_err(|e| {
                 Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e))
             })?;
@@ -387,20 +386,19 @@ impl StoreProcessor {
             .join(",");
         let parquet_list = format!("[{}]", parquet_list);
 
-        let mut sql_command = String::new();
-        if self.filter.is_empty() {
-            sql_command = format!(
-                "COPY (SELECT *, year(stime) AS year, month(stime) AS month, day(stime) as day FROM read_parquet({})) 
+        let sql_command = if self.filter.is_empty() {
+            format!(
+                "COPY (SELECT *, year(stime) AS year, month(stime) AS month, day(stime) as day FROM read_parquet({}))
                     TO '{}' (FORMAT 'parquet', PARTITION_BY(year, month, day), APPEND TRUE, FILENAME_PATTERN 'gnat-{{uuid}}');",
                 parquet_list, self.output_list[0]
-            );
+            )
         } else {
-            sql_command = format!(
-                "COPY (SELECT *, year(stime) AS year, month(stime) AS month, day(stime) as day FROM read_parquet({}) WHERE {}) 
+            format!(
+                "COPY (SELECT *, year(stime) AS year, month(stime) AS month, day(stime) as day FROM read_parquet({}) WHERE {})
                     TO '{}' (FORMAT 'parquet', PARTITION_BY(year, month, day), APPEND TRUE, FILENAME_PATTERN 'gnat-{{uuid}}');",
                 parquet_list, self.filter, self.output_list[0]
-            );
-        }
+            )
+        };
 
         self.db_conn
             .execute_batch(&sql_command)

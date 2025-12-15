@@ -69,7 +69,7 @@ impl ExportProcessor {
 
         let field_list = options.get("fields").expect("expected format");
 
-        let mut list = Vec::<String>::new();
+        let list: Vec<String>;
         if !field_list.is_empty() && *field_list != "*" {
             list = field_list.split(",").map(str::to_string).collect();
             for field in &list {

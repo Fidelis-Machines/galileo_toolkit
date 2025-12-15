@@ -11,7 +11,6 @@ use crate::model::histogram::number::NumberHistogram;
 use crate::model::histogram::numeric_category::NumericCategoryHistogram;
 use crate::model::histogram::string_category::StringCategoryHistogram;
 use crate::model::histogram::time_category::TimeCategoryHistogram;
-use crate::pipeline::TCP_FILTER;
 use duckdb::{params, Connection};
 
 use crate::model::histogram::{
@@ -27,6 +26,8 @@ use chrono::{DateTime, Utc};
 use duckdb::Appender;
 use std::collections::HashMap;
 use std::fs;
+use std::io::Error;
+use std::path::Path;
 use std::path::PathBuf;
 
 struct DbFileRemover {
@@ -40,9 +41,6 @@ impl Drop for DbFileRemover {
         }
     }
 }
-
-use std::io::Error;
-use std::path::Path;
 
 #[allow(dead_code)]
 enum Severity {
@@ -208,209 +206,15 @@ impl HistogramModels {
         Ok(())
     }
 
-    pub fn generate_trigger_data_notused(
-        &mut self,
-        db_in: &mut Connection,
-        db_out: &mut Connection,
-    ) -> Result<u64, Error> {
-        let sql_command = format!(
-            "SELECT * EXCLUDE(tag, hbos_map, ndpi_risk_list) 
-             FROM flow 
-             WHERE observe='{}' AND dvlan = {} AND proto='{}' AND trigger > 0;",
-            self.observe, self.vlan, self.proto
-        );
-        let mut stmt = db_in.prepare(&sql_command).expect("sql trigger");
-
-        let record_iter = stmt
-            .query_map([], |row| {
-                Ok(MemFlowRecord {
-                    stream: row.get(0).expect("missing value"),
-                    id: row.get(1).expect("missing value"),
-                    observe: row.get(2).expect("missing value"),
-                    stime: row.get(3).expect("missing value"),
-                    etime: row.get(4).expect("missing value"),
-                    dur: row.get(5).expect("missing value"),
-                    rtt: row.get(6).expect("missing value"),
-                    pcr: row.get(7).expect("missing value"),
-                    proto: row.get(8).expect("missing value"),
-                    saddr: row.get(9).expect("missing value"),
-                    daddr: row.get(10).expect("missing value"),
-                    sport: row.get(11).expect("missing value"),
-                    dport: row.get(12).expect("missing value"),
-                    iflags: row.get(13).expect("missing value"),
-                    uflags: row.get(14).expect("missing value"),
-                    stcpseq: row.get(15).expect("missing value"),
-                    dtcpseq: row.get(16).expect("missing value"),
-                    svlan: row.get(17).expect("missing value"),
-                    dvlan: row.get(18).expect("missing value"),
-                    spkts: row.get(19).expect("missing value"),
-                    dpkts: row.get(20).expect("missing value"),
-                    sbytes: row.get(21).expect("missing value"),
-                    dbytes: row.get(22).expect("missing value"),
-                    sentropy: row.get(23).expect("missing value"),
-                    dentropy: row.get(24).expect("missing value"),
-                    siat: row.get(25).expect("missing value"),
-                    diat: row.get(26).expect("missing value"),
-                    sstdev: row.get(27).expect("missing value"),
-                    dstdev: row.get(28).expect("missing value"),
-                    dtcpurg: row.get(29).expect("missing value"),
-                    stcpurg: row.get(30).expect("missing value"),
-                    ssmallpktcnt: row.get(31).expect("missing value"),
-                    dsmallpktcnt: row.get(32).expect("missing value"),
-                    slargepktcnt: row.get(33).expect("missing value"),
-                    dlargepktcnt: row.get(34).expect("missing value"),
-                    snonemptypktcnt: row.get(35).expect("missing value"),
-                    dnonemptypktcnt: row.get(36).expect("missing value"),
-                    sfirstnonemptycnt: row.get(37).expect("missing value"),
-                    dfirstnonemptycnt: row.get(38).expect("missing value"),
-                    smaxpktsize: row.get(39).expect("missing value"),
-                    dmaxpktsize: row.get(40).expect("missing value"),
-                    sstdevpayload: row.get(41).expect("missing value"),
-                    dstdevpayload: row.get(42).expect("missing value"),
-                    spd: row.get(43).expect("missing value"),
-                    reason: row.get(44).expect("missing value"),
-                    smac: row.get(45).expect("missing value"),
-                    dmac: row.get(46).expect("missing value"),
-                    scountry: row.get(47).expect("missing value"),
-                    dcountry: row.get(48).expect("missing value"),
-                    scity: row.get(49).expect("missing value"),
-                    dcity: row.get(50).expect("missing value"),
-                    sasn: row.get(51).expect("missing value"),
-                    dasn: row.get(52).expect("missing value"),
-                    sasnorg: row.get(53).expect("missing value"),
-                    dasnorg: row.get(54).expect("missing value"),
-                    orient: row.get(55).expect("missing value"),
-                    hbos_score: row.get(56).expect("missing value"),
-                    hbos_severity: row.get(57).expect("missing value"),
-                    appid: row.get(58).expect("missing value"),
-                    category: row.get(59).unwrap_or("".to_string()),
-                    risk_bits: row.get(60).expect("missing value"),
-                    risk_score: row.get(61).expect("missing value"),
-                    risk_severity: row.get(62).expect("missing value"),
-                    trigger: row.get(63).expect("missing value"),
-                })
-            })
-            .expect("query map failed");
-
-        let mut trigger_count: u64 = 0;
-        {
-            let _ = db_out.execute_batch("BEGIN TRANSACTION;").map_err(|e| {
-                Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e))
-            })?;
-
-            for record in record_iter {
-                let record = record.map_err(|e| {
-                    Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e))
-                })?;
-
-                let mut is_first = true;
-                let risk_bits: u64 = record.risk_bits;
-                let mut risk_list = format!("list_value(");
-                if risk_bits > 0 {
-                    for i in 0..64 {
-                        let bit_is_set = (risk_bits >> i) & 1 == 1;
-                        if bit_is_set {
-                            if is_first {
-                                is_first = false;
-                            } else {
-                                risk_list.push_str(",");
-                            }
-                            risk_list.push_str("'");
-                            risk_list.push_str(Self::riskname_by_index(i));
-                            risk_list.push_str("'");
-                        }
-                    }
-                }
-                risk_list.push_str(")");
-
-                //
-                // write hbos map
-                //
-                let mut hbos_map = format!("map_from_entries([");
-                let mut is_first_map = true;
-
-                for (name, histogram) in &mut self.numerical {
-                    let feature_prob = histogram.get_probability(&record);
-                    if is_first_map {
-                        is_first_map = false;
-                    } else {
-                        hbos_map.push_str(",");
-                    }
-                    hbos_map.push_str(&format!("{{k:'{}',v:{:.3}}}", name, feature_prob));
-                }
-
-                for (name, histogram) in &mut self.numeric_category {
-                    let feature_prob = histogram.get_probability(&record);
-                    if is_first_map {
-                        is_first_map = false;
-                    } else {
-                        hbos_map.push_str(",");
-                    }
-                    hbos_map.push_str(&format!("{{k:'{}',v:{:.3}}}", name, feature_prob));
-                }
-
-                for (name, histogram) in &mut self.string_category {
-                    let feature_prob = histogram.get_probability(&record);
-                    if is_first_map {
-                        is_first_map = false;
-                    } else {
-                        hbos_map.push_str(",");
-                    }
-                    hbos_map.push_str(&format!("{{k:'{}',v:{:.3}}}", name, feature_prob));
-                }
-
-                for (name, histogram) in &mut self.ipaddr_category {
-                    let feature_prob = histogram.get_probability(&record);
-                    if is_first_map {
-                        is_first_map = false;
-                    } else {
-                        hbos_map.push_str(",");
-                    }
-                    hbos_map.push_str(&format!("{{k:'{}',v:{:.3}}}", name, feature_prob));
-                }
-
-                for (name, histogram) in &mut self.time_category {
-                    let feature_prob = histogram.get_probability(&record);
-                    if is_first_map {
-                        is_first_map = false;
-                    } else {
-                        hbos_map.push_str(",");
-                    }
-                    hbos_map.push_str(&format!("{{k:'{}',v:{:.3}}}", name, feature_prob));
-                }
-                hbos_map.push_str("])");
-
-                let sql_insert_command = format!(
-                    "INSERT INTO trigger_table BY POSITION VALUES ('{}', {}, {}, {});",
-                    record.id, record.trigger, risk_list, hbos_map
-                );
-                let _ = db_out.execute_batch(&sql_insert_command).map_err(|e| {
-                    Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e))
-                })?;
-                trigger_count += 1;
-            }
-            let _ = db_out.execute_batch("COMMIT;").map_err(|e| {
-                Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e))
-            })?;
-        }
-        Ok(trigger_count)
-    }
-
     pub fn score(&mut self, db_connection: &mut Connection) -> Result<u64, Error> {
         let mut score_appender = db_connection
             .appender("score_table")
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
 
-        let mut sql_command = format!(
-            "SELECT * EXCLUDE(tag, hbos_map, ndpi_risk_list) FROM flow WHERE observe='{}' AND dvlan={} AND proto='{}'",
+        let sql_command = format!(
+            "SELECT * EXCLUDE(tag, hbos_map, ndpi_risk_list) FROM flow WHERE observe='{}' AND dvlan={} AND proto='{}' AND (snonemptypktcnt>0 OR dnonemptypktcnt>0);",
             self.observe, self.vlan, self.proto,
         );
-
-        if self.proto == "tcp" {
-            sql_command.push_str(TCP_FILTER);
-        } else {
-            sql_command.push_str(";");
-        }
 
         let mut stmt = db_connection
             .prepare(&sql_command)
@@ -662,7 +466,7 @@ impl HistogramModels {
         let mut high = 0.0;
         let mut severe = 0.0;
         let mut critical = 0.0;
-        let mut max = 0.0;
+        let mut _max = 0.0;
         {
             let mut stmt = db_conn
                 .prepare("FROM histogram_values(hbos_score, score);")
@@ -682,7 +486,7 @@ impl HistogramModels {
                 high = severe;
                 severe = critical;
                 critical = boundary;
-                max = boundary;
+                _max = boundary;
             }
         }
 

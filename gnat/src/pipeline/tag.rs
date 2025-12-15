@@ -29,23 +29,23 @@ pub const TAG_LIMIT: u8 = 16;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct TagStructure {
-    tag: String,
+    tag: String, // tag / label name
     #[serde(default = "default_string")]
-    observe: String,
+    observe: String, // observe domain
     #[serde(default = "default_string")]
-    proto: String,
+    proto: String, // protocol
     #[serde(default = "default_string")]
-    saddr: String,
+    saddr: String, // source address    
     #[serde(default = "zero_port")]
-    sport: u16,
+    sport: u16, // source port
     #[serde(default = "default_string")]
-    daddr: String,
+    daddr: String,  // destination address
     #[serde(default = "zero_port")]
-    dport: u16,
+    dport: u16, // destination port
     #[serde(default = "default_string")]
-    ndpi_appid: String,
+    ndpi_appid: String, // ndpi application id
     #[serde(default = "default_string")]
-    orient: String,
+    orient: String, // flow orientation, 00, 01, 10, 11
 }
 
 fn zero_port() -> u16 {

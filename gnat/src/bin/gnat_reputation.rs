@@ -7,7 +7,7 @@
  */
 
 use clap::Parser;
-use gnat::pipeline::intel::ThreatIntelProcessor;
+use gnat::pipeline::reputation::ThreatIntelProcessor;
 use gnat::pipeline::FileProcessor;
 use std::error::Error;
 
@@ -34,17 +34,17 @@ struct Args {
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
 
-    let mut intel_processor = ThreatIntelProcessor::new(
-        "intel",
+    let mut reputation_processor = ThreatIntelProcessor::new(
+        "reputation",
         &args.input,
         &args.output,
         &args.pass.clone().unwrap_or(String::new()),
         &args.interval.clone().unwrap_or(String::from("minute")),
-        ".parquet", 
+        ".parquet",
         &args.options.clone().unwrap_or(String::new()),
     )?;
 
-    intel_processor.run()?;
+    reputation_processor.run()?;
 
     Ok(())
 }

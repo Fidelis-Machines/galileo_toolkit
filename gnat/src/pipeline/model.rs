@@ -124,6 +124,7 @@ impl ModelProcessor {
         })
     }
 
+    #[allow(dead_code)]
     fn upload_model(&self, model_file: &str) -> Result<(), Error> {
         // if the md_database is empty, we do not upload the model
         if !self.md_database.is_empty() {

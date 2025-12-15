@@ -5,7 +5,6 @@
  * All Rights Reserved.
  * See license information in LICENSE.
  */
-use crate::pipeline::TCP_FILTER;
 use crate::model::histogram::HistogramType;
 use crate::model::histogram::HistogramType::*;
 use crate::model::histogram::*;
@@ -104,15 +103,12 @@ impl NumericCategoryHistogram {
         vlan: i64,
         proto: &str,
     ) -> Result<(), duckdb::Error> {
-        let mut sql_command = format!(
-            "SELECT {} FROM flow WHERE observe='{}' AND dvlan={} AND proto='{}'",
+
+        let sql_command = format!(
+            "SELECT {} FROM flow WHERE observe='{}' AND dvlan={} AND proto='{}' AND (snonemptypktcnt>0 OR dnonemptypktcnt>0);",
             self.name, observe, vlan, proto,
         );
-        if proto == "tcp" {
-            sql_command.push_str(TCP_FILTER);
-        } else {
-            sql_command.push_str(";");
-        }
+
         let mut stmt = db.prepare(&sql_command)?;
 
         let record_iter = stmt.query_map([], |row| {

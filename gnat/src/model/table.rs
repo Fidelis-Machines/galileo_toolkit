@@ -243,7 +243,8 @@ pub static CREATE_ABUSE_TABLE: &str = "CREATE TABLE IF NOT EXISTS abuse
     totalReports INTEGER,
     numDistinctUsers INTEGER,
     lastReportedAt VARCHAR,
-    cachedAt TIMESTAMP 
+    observationPoint VARCHAR,
+    cachedAt TIMESTAMP
 );";
 
 #[derive(Debug)]

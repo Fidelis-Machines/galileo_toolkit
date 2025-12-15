@@ -18,9 +18,9 @@ use crate::model::table::HbosSummaryRecord;
 use crate::pipeline::check_parquet_stream;
 use crate::pipeline::load_environment;
 use crate::pipeline::StreamType;
-use crate::utils::duckdb::{duckdb_open_memory, duckdb_open_readonly};
-use crate::utils::common::{format_parquet_list, create_output_filenames};
 use crate::sql::queries;
+use crate::utils::common::{create_output_filenames, format_parquet_list};
+use crate::utils::duckdb::{duckdb_open_memory, duckdb_open_readonly};
 use duckdb::params;
 use std::collections::HashMap;
 use std::fs;
@@ -42,6 +42,7 @@ pub struct HbosProcessor {
     pub extension: String,
     pub model_spec: String,
     pub model_mtime: u64,
+    pub protocol_list: Vec<String>,
     pub hbos_summary_map: HashMap<String, HbosSummaryRecord>,
     pub histogram_map: HashMap<String, HistogramModels>,
 }
@@ -58,8 +59,8 @@ impl HbosProcessor {
     ) -> Result<Self, Error> {
         let _ = load_environment();
         let interval = parse_interval(interval_string);
-        let options = parse_options(options_string);
-
+        let mut options = parse_options(options_string);
+        options.entry("proto").or_insert("udp,tcp");
         for (key, value) in &options {
             if !value.is_empty() {
                 println!("{}: [{}=>{}]", command, key, value);
@@ -70,6 +71,11 @@ impl HbosProcessor {
             .get("model")
             .expect("expected --option model=file")
             .to_string();
+        let protocols = options
+            .get("proto")
+            .expect("expected proto list")
+            .to_string();
+        let protocol_list: Vec<String> = protocols.split(",").map(str::to_string).collect();
 
         let mtime = HbosProcessor::file_modified_time_in_seconds(&model_file);
 
@@ -86,6 +92,7 @@ impl HbosProcessor {
             extension: extension_string.to_string(),
             model_spec: model_file,
             model_mtime: mtime,
+            protocol_list: protocol_list,
             hbos_summary_map: HashMap::new(),
             histogram_map: HashMap::new(),
         })
@@ -132,9 +139,7 @@ impl HbosProcessor {
                     proto: row.get(2)?,
                 })
             })
-            .map_err(|e| {
-                Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e))
-            })?;
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
 
         let mut distinct_observation_models: Vec<DistinctObservation> = Vec::new();
         for record in record_iter {
@@ -154,26 +159,29 @@ impl HbosProcessor {
                 })?;
 
             let hbos_summary = stmt
-                .query_row(params![&record.observe, &record.vlan, &record.proto], |row| {
-                    Ok(HbosSummaryRecord {
-                        observe: row.get(0)?,
-                        vlan: row.get(1)?,
-                        proto: row.get(2)?,
-                        min: row.get(3)?,
-                        max: row.get(4)?,
-                        skewness: row.get(5)?,
-                        avg: row.get(6)?,
-                        std: row.get(7)?,
-                        mad: row.get(8)?,
-                        median: row.get(9)?,
-                        quantile: row.get(10)?,
-                        low: row.get(11)?,
-                        medium: row.get(12)?,
-                        high: row.get(13)?,
-                        severe: row.get(14)?,
-                        critical: row.get(15)?,
-                    })
-                })
+                .query_row(
+                    params![&record.observe, &record.vlan, &record.proto],
+                    |row| {
+                        Ok(HbosSummaryRecord {
+                            observe: row.get(0)?,
+                            vlan: row.get(1)?,
+                            proto: row.get(2)?,
+                            min: row.get(3)?,
+                            max: row.get(4)?,
+                            skewness: row.get(5)?,
+                            avg: row.get(6)?,
+                            std: row.get(7)?,
+                            mad: row.get(8)?,
+                            median: row.get(9)?,
+                            quantile: row.get(10)?,
+                            low: row.get(11)?,
+                            medium: row.get(12)?,
+                            high: row.get(13)?,
+                            severe: row.get(14)?,
+                            critical: row.get(15)?,
+                        })
+                    },
+                )
                 .map_err(|e| {
                     Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e))
                 })?;
@@ -201,9 +209,7 @@ impl HbosProcessor {
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
         let mut stmt = model_conn
             .prepare(queries::MODEL_DISTINCT_OBSERVATIONS)
-            .map_err(|e| {
-                Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e))
-            })?;
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
 
         let record_iter = stmt
             .query_map([], |row| {
@@ -213,9 +219,7 @@ impl HbosProcessor {
                     proto: row.get(2)?,
                 })
             })
-            .map_err(|e| {
-                Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e))
-            })?;
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
 
         let mut distinct_observation: Vec<DistinctObservation> = Vec::new();
         for record in record_iter {
@@ -336,7 +340,8 @@ impl FileProcessor for HbosProcessor {
             return Ok(());
         }
 
-        let (tmp_filename, final_filename) = create_output_filenames(&self.output_list[0], &self.command);
+        let (tmp_filename, final_filename) =
+            create_output_filenames(&self.output_list[0], &self.command);
 
         let mut db_conn = duckdb_open_memory(1)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;
@@ -379,6 +384,10 @@ impl FileProcessor for HbosProcessor {
 
         println!("{}: scoring...", self.command);
         for record in &distinct_observation_models {
+            // protocol_list filtering
+            if !self.protocol_list.is_empty() && !self.protocol_list.contains(&record.proto) {
+                continue;
+            }
             let distinct_key = format!("{}/{}/{}", record.observe, record.vlan, record.proto);
             println!("{}:\t{}", self.command, distinct_key);
             let histogram_model = match self.histogram_map.get_mut(&distinct_key) {
@@ -411,7 +420,7 @@ impl FileProcessor for HbosProcessor {
         let sql_export_command = format!(
             "COPY (SELECT * FROM flow) TO '{}' (FORMAT parquet);",
             tmp_filename
-            );
+        );
         db_conn
             .execute_batch(&sql_export_command)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("DuckDB error: {}", e)))?;

@@ -32,6 +32,7 @@ pub struct SampleProcessor {
     pub extension: String,
     pub retention: u16,
     pub percent: f64,
+    pub protocol_list: Vec<String>,
 }
 
 impl SampleProcessor {
@@ -49,6 +50,7 @@ impl SampleProcessor {
         let mut options = parse_options(options_string);
         options.entry("retention").or_insert("7");
         options.entry("percent").or_insert("5");
+        options.entry("proto").or_insert("udp,tcp");
         for (key, value) in &options {
             if !value.is_empty() {
                 println!("{}: [{}=>{}]", command, key, value);
@@ -65,6 +67,12 @@ impl SampleProcessor {
             .expect("expected percent")
             .parse::<u8>()
             .unwrap();
+
+        let protocols = options
+            .get("proto")
+            .expect("expected proto list")
+            .to_string();
+        let protocol_list: Vec<String> = protocols.split(",").map(str::to_string).collect();
 
         if interval == Interval::MINUTE || interval == Interval::SECOND {
             return Err(Error::new(
@@ -86,6 +94,7 @@ impl SampleProcessor {
             extension: extension_string.to_string(),
             retention,
             percent: percent as f64,
+            protocol_list: protocol_list,
         })
     }
 
@@ -224,6 +233,12 @@ impl SampleProcessor {
             let record = record.map_err(|e| {
                 Error::new(std::io::ErrorKind::Other, format!("record error: {}", e))
             })?;
+
+            // protocol_list filtering
+            if !self.protocol_list.is_empty() && !self.protocol_list.contains(&record.proto) {
+                continue;
+            }
+
             println!(
                 "{}: sampling [{}/{}/{}] {}%",
                 self.command, record.observe, record.vlan, record.proto, self.percent

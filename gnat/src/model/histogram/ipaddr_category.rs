@@ -5,7 +5,6 @@
  * All Rights Reserved.
  * See license information in LICENSE.
  */
-use crate::pipeline::TCP_FILTER;
 use crate::model::histogram::HistogramType;
 use crate::model::histogram::HistogramType::*;
 use crate::model::histogram::*;
@@ -17,7 +16,6 @@ use std::collections::HashMap;
 use std::io::Error;
 use std::net::IpAddr;
 use std::str::FromStr;
-
 
 #[derive(Debug)]
 pub struct IpAddrCategoryHistogram {
@@ -80,7 +78,6 @@ impl IpAddrCategoryHistogram {
         Ok(())
     }
     fn get_key(&mut self, ipaddr: &String) -> u64 {
-        let mut key: u64 = 0;
         let modulus = 8192; // Up to 8192 categories (network prefixes)
         let ip_address = IpAddr::from_str(ipaddr).expect("invalid ip address");
 
@@ -90,14 +87,13 @@ impl IpAddrCategoryHistogram {
         match ip_address {
             IpAddr::V4(ipv4) => {
                 let shifted = u32::from(ipv4) >> 8;
-                key = shifted.rem_euclid(modulus) as u64;
+                shifted.rem_euclid(modulus) as u64
             }
             IpAddr::V6(ipv6) => {
                 let shifted = u128::from(ipv6) >> 8;
-                key = shifted.rem_euclid(modulus as u128) as u64;
+                shifted.rem_euclid(modulus as u128) as u64
             }
         }
-        key
     }
     fn add(&mut self, ipaddr: &String) {
         let key = self.get_key(ipaddr);
@@ -119,16 +115,10 @@ impl IpAddrCategoryHistogram {
         vlan: i64,
         proto: &str,
     ) -> Result<(), duckdb::Error> {
-        let mut sql_command = format!(
-            "SELECT {} FROM flow WHERE observe='{}' AND dvlan={} AND proto='{}'",
+        let sql_command = format!(
+            "SELECT {} FROM flow WHERE observe='{}' AND dvlan={} AND proto='{}' AND (snonemptypktcnt>0 OR dnonemptypktcnt>0);",
             self.name, observe, vlan, proto,
         );
-
-        if proto == "tcp" {
-            sql_command.push_str(TCP_FILTER);
-        } else {
-            sql_command.push_str(";");
-        }
 
         let mut stmt = db.prepare(&sql_command)?;
 

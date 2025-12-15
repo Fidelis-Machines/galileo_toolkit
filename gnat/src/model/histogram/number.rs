@@ -11,7 +11,6 @@ use crate::model::histogram::*;
 use crate::model::table::HistogramIntegerValue;
 use crate::model::table::MemFlowRecord;
 use crate::model::table::{HistogramSummaryTable, NumericHistogramTable};
-use crate::pipeline::TCP_FILTER;
 use duckdb::{params, Appender, Connection, DropBehavior};
 use std::io::Error;
 
@@ -95,15 +94,11 @@ impl NumberHistogram {
         vlan: i64,
         proto: &str,
     ) -> Result<(), duckdb::Error> {
-        let mut sql_command = format!(
-            "CREATE TABLE {} AS SELECT {} FROM flow WHERE observe='{}' AND dvlan={} AND proto='{}'",
-            self.name, self.name, observe, vlan, proto,
+        let sql_command = format!(
+            "SELECT {} FROM flow WHERE observe='{}' AND dvlan={} AND proto='{}' AND (snonemptypktcnt>0 OR dnonemptypktcnt>0);",
+            self.name, observe, vlan, proto,
         );
-        if proto == "tcp" {
-            sql_command.push_str(TCP_FILTER);
-        } else {
-            sql_command.push_str(";");
-        }
+
         db.execute_batch(&sql_command)?;
 
         let sql_command = format!("FROM histogram_values({},{});", self.name, self.name);

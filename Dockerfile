@@ -48,7 +48,7 @@ RUN --mount=type=cache,target=/var/cache/apt \
 WORKDIR /opt/gnat
 RUN mkdir -p /opt/gnat/bin /opt/gnat/scripts /opt/gnat/etc /opt/gnat/lib/pytorch
 
-COPY --from=builder /builder/gnat_scripts/entrypoint-gnat_intel.sh /opt/gnat/scripts/
+COPY --from=builder /builder/gnat_scripts/entrypoint-gnat_reputation.sh /opt/gnat/scripts/
 COPY --from=builder /builder/gnat_scripts/entrypoint-gnat_sensor.sh /opt/gnat/scripts/
 COPY --from=builder /builder/gnat_scripts/entrypoint-gnat_import.sh /opt/gnat/scripts/
 COPY --from=builder /builder/gnat_scripts/entrypoint-gnat_collect.sh /opt/gnat/scripts/
@@ -67,7 +67,7 @@ COPY --from=builder /usr/local/lib /opt/gnat/lib
 COPY --from=builder /opt/gnat/lib /opt/gnat/lib
 COPY --from=builder /base/libtorch/lib /opt/gnat/lib/pytorch
 
-COPY --from=builder /builder/gnat/target/release/gnat_intel /opt/gnat/bin/gnat_intel
+COPY --from=builder /builder/gnat/target/release/gnat_reputation /opt/gnat/bin/gnat_reputation
 COPY --from=builder /builder/gnat/target/release/gnat_collect /opt/gnat/bin/gnat_collect
 COPY --from=builder /builder/gnat/target/release/gnat_import /opt/gnat/bin/gnat_import
 COPY --from=builder /builder/gnat/target/release/gnat_export /opt/gnat/bin/gnat_export
