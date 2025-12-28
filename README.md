@@ -17,16 +17,6 @@ These environments present unique challenges: devices whose traffic patterns fal
 
 ## Key Components
 
-### gnat_flow - High-Performance Flow Meter
-A YAF-like flow meter written in Rust with advanced capabilities:
-- **Packet capture** via libpcap or high-performance AF_PACKET (Linux)
-- **Bidirectional flow assembly** with 5-tuple + VLAN keying
-- **nDPI integration** for deep packet inspection and application identification
-- **JA4 fingerprinting** - JA4T (TCP client), JA4TS (TCP server), and JA4L (latency) fingerprints
-- **Parquet/JSON export** for seamless integration with data pipelines
-- **Entropy calculation** for detecting encrypted or compressed traffic
-- **Fragment reassembly** for complete traffic visibility
-
 ### gnat - Pipeline Processing Tools
 A suite of composable CLI utilities for flow data processing:
 - `gnat_collect` - Collect and aggregate flow data

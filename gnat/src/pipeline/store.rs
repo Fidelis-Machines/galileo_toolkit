@@ -81,8 +81,8 @@ impl StoreProcessor {
                 return Err(Error::other("unsupported filter type"));
             }
         }
-        bool mut is_hive = false;
-        let mut hive_type = options.get("hive").expect("expected hive type").to_string();
+        let mut is_hive = false;
+        let hive_type = options.get("hive").expect("expected hive type").to_string();
          if !hive_type.is_empty() {
             if hive_type == "false" {
                is_hive = false;              
